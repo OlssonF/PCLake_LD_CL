@@ -21,11 +21,11 @@ lakes_portal_rt <-  read_csv('data/Lake District_UKCEH Portal RT_data.csv') |> #
   rename(DISCHARGE_M3Y = `DISCHARGEm3/y`)
 
 # need to have all of these
-lakes_portal |> 
-  full_join(lakes_portal_rt, by = 'WBID') |> 
+lakes_portal |>
+  full_join(lakes_portal_rt, by = 'WBID') |>
   filter(!is.na(MNDP),
          !is.na(FETCH_KM),
-         !is.na(DISCHARGE_M3Y)) |> 
+         !is.na(DISCHARGE_M3Y)) |>
   write_csv('data/lakes4PCLake.csv')
 
 # Meteorological data --------------------------------
@@ -75,59 +75,3 @@ get_EOBS_ts <- function(nc_file, var_name, latitude, longitude) {
   
   return(var_df)
 }
-
-
-## Example using Elterwater
-lakes_portal_df <- read_csv('data/lakes4PCLake.csv')
-
-latitude_elter <- lakes_portal_df |> 
-  filter(str_detect(NAME, 'Elter')) |> 
-  select(WBLAT) |> pull()
-
-longitude_elter <- lakes_portal_df |> 
-  filter(str_detect(NAME, 'Elter')) |> 
-  select(WBLONG) |> pull()
-
-
-
-# extract the data from the downloaded files
-qq_files <- list.files('data/E-OBS', pattern = 'qq', full.names = T)
-qq_ts <- map(qq_files, get_EOBS_ts, var_name = 'qq', latitude = latitude_elter, longitude = longitude_elter) |> 
-  list_rbind()
-
-fg_files <- list.files('data/E-OBS', pattern = 'fg', full.names = T)
-fg_ts <- map(fg_files, get_EOBS_ts, var_name = 'fg', latitude = latitude_elter, longitude = longitude_elter) |> 
-  list_rbind()
-
-#--------------------------------------------------------------------#
-
-# take only 10 years
-# 2011-2020
-fg_ts |> 
-  filter(between(date, 
-                 as_date('2011-01-01'),
-                 as_date('2021-01-01')),
-         yday(date) != 366) |> # remove leap year days
-  mutate(dTime = row_number()-1,
-         dValue = as.numeric(fg)) |> 
-  select(dTime, dValue) |>
-  # write_delim(file = 'mvWind.txt', delim = '\t', append = F)
-  write_delim(file = '../../../Txt/mVWind.txt', delim = '\t', eol = '\t-1\n', append = F)
-# 
-data.frame('-1') |>
-  write_delim(file = '../../../Txt/mVWind.txt', delim = '\t', append = T)
-
-qq_ts |> 
-  filter(between(date, 
-                 as_date('2011-01-01'),
-                 as_date('2021-01-01')),
-         yday(date) != 366) |> # remove leap year days
-  mutate(dTime = row_number()-1,
-         dValue = as.numeric(qq)) |> 
-  select(dTime, dValue) |>  
-  na.omit() |> 
-  # write_delim(file = '../../../Txt/mLOut.txt', delim = '\t', append = F)
-  write_delim(file = '../../../Txt/mLOut.txt', delim = '\t', eol = '\t-1\n', append = F)
-
-data.frame('-1') |>
-  write_delim(file = '../../../Txt/mLOut.txt', append = T)
