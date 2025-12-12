@@ -6,7 +6,7 @@
 #--------------------------------------#
 
 library(tidyverse)
-setwd(here::here())
+# setwd(here::here())
 # Required lake specific parameters ------------------
 # Lake specific parameters that we need:
 # - mean depth (MNDP)
@@ -16,17 +16,6 @@ setwd(here::here())
 # - light ts
 # - wind ts
 #-----------------------------------------------------#
-lakes_portal <- readxl::read_xlsx('data/Lake District_UKCEH Portal data_raw.xlsx', sheet = 'Combined')
-lakes_portal_rt <-  read_csv('data/Lake District_UKCEH Portal RT_data.csv') |> # this is extracted from the Lake District_UKCEH Portal data_raw.xlsx sheet RT Data
-  rename(DISCHARGE_M3Y = `DISCHARGEm3/y`)
-
-# need to have all of these
-lakes_portal |>
-  full_join(lakes_portal_rt, by = 'WBID') |>
-  filter(!is.na(MNDP),
-         !is.na(FETCH_KM),
-         !is.na(DISCHARGE_M3Y)) |>
-  write_csv('data/lakes4PCLake.csv')
 
 # Meteorological data --------------------------------
 #' which_grid
