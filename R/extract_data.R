@@ -6,6 +6,8 @@
 #--------------------------------------#
 
 library(tidyverse)
+library(ncdf4)
+library(data.table)
 # setwd(here::here())
 # Required lake specific parameters ------------------
 # Lake specific parameters that we need:
@@ -45,10 +47,7 @@ which_grid <- function(x, vector) {
 #' @examples
 
 get_EOBS_ts <- function(nc_file, var_name, latitude, longitude) {
-  library(ncdf4)
-  library(tidyverse)
-  library(data.table)
-  
+
   # Open the .nc file
   our_nc_data <- nc_open(nc_file)
   time <- ncvar_get(our_nc_data, "time")
