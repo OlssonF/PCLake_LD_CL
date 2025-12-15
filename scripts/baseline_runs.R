@@ -96,7 +96,34 @@ names(lake_names_lookup)[which(lake_names_lookup == 'Wind')] <- 29233
 # use these functions:
 source('R/extract_data.R')
 
-for (i in 1:length(lake_names_lookup)) {
+spin_up <- 365 * 25 # 25 years
+
+# report the validation states
+val_states <- c('oChlaEpi', 'oO2WEpi', 'oPTotWEpi', 'oNTotWEpi', 'aSecchiT')
+lDATM_SETTINGS$auxils$iReport[which(rownames(lDATM_SETTINGS$auxils) %in% val_states)] <- 1 
+# plus some other states to be plotted
+diag_states <- c('uTmEpi', 'uTmHyp', 'uDepthMixMeas', 'uPLoadEpi', 'uNLoadEpi')
+lDATM_SETTINGS$auxils$iReport[which(rownames(lDATM_SETTINGS$auxils) %in% diag_states)] <- 1 # report these in the output
+
+##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+## 5.  Make and adjust cpp files ----------------------------------------
+##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+## The nRUN_SET determines which forcings are switched on
+PCModelAdjustCPPfiles(dirSHELL = dirShell,
+                      nameWORKCASE = nameWorkCase,
+                      lDATM = lDATM_SETTINGS,
+                      nRUN_SET = 2) # using set2
+
+##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+## 6.  Compile the model ------------------------------------------------
+##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+PCModelCompileModelWorkCase(dirSHELL = dirShell,
+                            nameWORKCASE = nameWorkCase)
+
+
+
+for (i in 1:1){#length(lake_names_lookup)) {
   
   # Select one lake at a time
   lake_name <- lake_names_lookup[i]
@@ -133,9 +160,9 @@ for (i in 1:length(lake_names_lookup)) {
            yday(date) != 366) # remove leap year days
   
 
-  fg_ts |> 
+  lDATM_SETTINGS$forcings$sSet2$mVWind$value <- fg_ts |> 
     # repeat the first year
-    slice(rep(1:365, each = 25)) |> 
+    slice(rep(1:365, each = 24)) |> 
     group_by(date) |> 
     mutate(rep = row_number()) |> ungroup() |> 
     arrange(rep, date) |> 
@@ -143,16 +170,16 @@ for (i in 1:length(lake_names_lookup)) {
     bind_rows(fg_ts) |> 
     mutate(dTime = row_number()-1,
            dValue = as.numeric(fg)) |>
-    select(dTime, dValue) |>
+    pull(dValue)
 
-    write_delim(file = 'input/mVWind.txt', delim = '\t', eol = '\t-1\n', append = F)
+    # write_delim(file = 'input/mVWind.txt', delim = '\t', eol = '\t-1\n', append = F)
   
-  data.frame('-1') |>
-    write_delim(file = 'input/mVWind.txt', delim = '\t', append = T)
+  # data.frame('-1') |>
+  #   write_delim(file = 'input/mVWind.txt', delim = '\t', append = T)
   
-  qq_ts  |> 
+  lDATM_SETTINGS$forcings$sSet2$mLOut$value <- qq_ts  |> 
     # repeat the first year
-    slice(rep(1:365, each = 25)) |> 
+    slice(rep(1:365, each = 24)) |> 
     group_by(date) |> 
     mutate(rep = row_number()) |> ungroup() |> 
     arrange(rep, date) |> 
@@ -161,11 +188,11 @@ for (i in 1:length(lake_names_lookup)) {
     mutate(dTime = row_number()-1,
            dValue = as.numeric(qq)) |> 
     select(dTime, dValue) |>  
-    na.omit() |> 
-    write_delim(file = 'input/mLOut.txt', delim = '\t', eol = '\t-1\n', append = F)
+    mutate(dValue = zoo::na.approx(dValue)) |> pull(dValue)
+    # write_delim(file = 'input/mLOut.txt', delim = '\t', eol = '\t-1\n', append = F)
   
-  data.frame('-1') |>
-    write_delim(file = 'input/mLOut.txt', append = T)
+  # data.frame('-1') |>
+  #   write_delim(file = 'input/mLOut.txt', append = T)
   
   ## SAGIS-SIMCAT (nutrient loading) -----------------------
   nut_conc <- read_csv('data/SAGIS/data/InflowNutrientConcs_SAGIS.csv', show_col_types = F) |> 
@@ -197,30 +224,13 @@ for (i in 1:length(lake_names_lookup)) {
   lDATM_SETTINGS$params[str_detect(rownames(lDATM_SETTINGS$params), 'cLAT'), change_sets] <- lakes_portal_subset$WBLAT # latitude
   lDATM_SETTINGS$params[str_detect(rownames(lDATM_SETTINGS$params), 'cDepthWInit0'), change_sets] <- lakes_portal_subset$MNDP # mean depth
   lDATM_SETTINGS$forcings$sSet2$mPLoadEpi$value <- PLoad
-  lDATM_SETTINGS$run_settings[which(rownames(lDATM_SETTINGS$run_settings) == "dReady"),] <- 50
   
-  # report the validation states
-  val_states <- c('oChlaEpi', 'oO2WEpi', 'oPTotWEpi', 'oNTotWEpi', 'aSecchiT')
-  lDATM_SETTINGS$auxils$iReport[which(rownames(lDATM_SETTINGS$auxils) %in% val_states)] <- 1 
-  # plus some other states to be plotted
-  diag_states <- c('uTmEpi', 'uTmHyp', 'uDepthMixMeas', 'uPLoadEpi', 'uNLoadEpi')
-  lDATM_SETTINGS$auxils$iReport[which(rownames(lDATM_SETTINGS$auxils) %in% diag_states)] <- 1 # report these in the output
   
-  ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-  ## 5.  Make and adjust cpp files ----------------------------------------
-  ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-  ## The nRUN_SET determines which forcings are switched on
-  PCModelAdjustCPPfiles(dirSHELL = dirShell,
-                        nameWORKCASE = nameWorkCase,
-                        lDATM = lDATM_SETTINGS,
-                        nRUN_SET = 2) # using set2
-  
-  ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-  ## 6.  Compile the model ------------------------------------------------
-  ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-  
-  PCModelCompileModelWorkCase(dirSHELL = dirShell,
-                              nameWORKCASE = nameWorkCase)
+  # Run PCLake+ --------------------------------------------------
+  setwd(here())
+  # readxl::read_xlsx('data/SITE ID_MULTIPLE DATA SOURCES_LD LAKES.xlsx') |> 
+  #   filter(!is.na(LAKE_Lakes_Tour_Chem_TeOx.xlsx)) |> 
+  #   glimpse() 
   
   ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   ## 7.  Initialize model  ------------------------------------------------
@@ -231,12 +241,6 @@ for (i in 1:length(lake_names_lookup)) {
                                        nameWORKCASE = nameWorkCase)
   
   
-  # Run PCLake+ --------------------------------------------------
-  setwd(here())
-  # readxl::read_xlsx('data/SITE ID_MULTIPLE DATA SOURCES_LD LAKES.xlsx') |> 
-  #   filter(!is.na(LAKE_Lakes_Tour_Chem_TeOx.xlsx)) |> 
-  #   glimpse() 
-  
   run1 <- PCmodelSingleRun(lDATM = lDATM_SETTINGS,
                            nRUN_SET = 2,
                            dfSTATES = InitStates,
@@ -246,17 +250,19 @@ for (i in 1:length(lake_names_lookup)) {
   
   
   # 
-  # run1 |> 
-  #   select(any_of(c('time', val_states, diag_states))) |> 
+  # run1 |>
+  #   select(any_of(c('time', val_states, diag_states))) |>
   #   pivot_longer(cols = any_of(c(val_states, diag_states)),
-  #                names_to = 'variable', values_to = 'value') |> 
+  #                names_to = 'variable', values_to = 'value') |>
   #   ggplot(aes(x=time,y=value)) +
   #   geom_line()+
   #   facet_wrap(~variable, scales = 'free_y')
   
   dir.create(file.path(project_location, 'output'), showWarnings = F)
-  write_csv(run1, 
-            file = file.path(project_location, 'output', 
+  run1 |> 
+    mutate(time = time - spin_up) |> # remove spin up before saving 
+    filter(time > 0) |> 
+    write_csv(file = file.path(project_location, 'output', 
                              paste0('baseline_', lake_name, '.csv')),
             progress = F)
   
