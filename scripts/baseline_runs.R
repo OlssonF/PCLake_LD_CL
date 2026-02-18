@@ -102,7 +102,7 @@ spin_up <- 365 * 25 # 25 years
 val_states <- c('oChlaEpi', 'oO2WEpi', 'oPTotWEpi', 'oNTotWEpi', 'aSecchiT')
 lDATM_SETTINGS$auxils$iReport[which(rownames(lDATM_SETTINGS$auxils) %in% val_states)] <- 1 
 # plus some other states to be plotted
-diag_states <- c('uTmEpi', 'uTmHyp', 'uDepthMixMeas', 'uPLoadEpi', 'uNLoadEpi')
+diag_states <- c('uTmEpi', 'uTmHyp', 'uDepthMixMeas', 'uPLoadEpi', 'uNLoadEpi', 'oPO4WHyp',  'oPO4WEpi', 'aStrat')
 lDATM_SETTINGS$auxils$iReport[which(rownames(lDATM_SETTINGS$auxils) %in% diag_states)] <- 1 # report these in the output
 
 ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -149,7 +149,9 @@ for (i in 1:1){#length(lake_names_lookup)) {
     filter(between(date, 
                    as_date('1998-01-01'),
                    as_date('2024-01-01')),
-           yday(date) != 366)
+           yday(date) != 366)|> # remove leap year days
+    mutate(qq = zoo::na.approx(qq),
+           qq = ifelse(qq < 1, 1, qq)) # cannot have NAs# remove leap year days
   
   fg_files <- list.files('data/E-OBS', pattern = 'fg', full.names = T)
   fg_ts <- map(fg_files, get_EOBS_ts, var_name = 'fg', latitude = latitude_use, longitude = longitude_use) |> 
@@ -157,10 +159,11 @@ for (i in 1:1){#length(lake_names_lookup)) {
     filter(between(date, 
                    as_date('1998-01-01'),
                    as_date('2024-01-01')),
-           yday(date) != 366) # remove leap year days
+           yday(date) != 366) |> # remove leap year days
+  mutate(fg = zoo::na.approx(fg)) # cannot have NAs
   
 
-  lDATM_SETTINGS$forcings$sSet2$mVWind$value <- fg_ts |> 
+   lDATM_SETTINGS$forcings$sSet2$mVWind$value <- fg_ts |> 
     # repeat the first year
     slice(rep(1:365, each = 24)) |> 
     group_by(date) |> 
