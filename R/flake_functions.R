@@ -287,3 +287,24 @@ calc_clearskyrad <- function(lat, lon, elev, datetime, temp, relhum) {
   return(as.vector(qq_clear))
   
 }
+
+
+
+read_flake <- function(filename) {
+  
+  # Read all lines, skipping the first header line
+  datastr <- readLines(filename)
+  
+  # Extract variable names from the first data line
+  vars <- strsplit(datastr[2], "\\s+")[[1]][-1]
+  
+  # Read the numeric data starting from line 3
+  df <- read.table(filename,
+                   header = FALSE,
+                   skip = 2,
+                   col.names = vars)
+  
+  return(df)
+}
+
+

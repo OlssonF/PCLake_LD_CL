@@ -56,7 +56,7 @@ get_EOBS_ts <- function(nc_file, var_name, latitude, longitude) {
   lat_index <- which_grid(latitude, our_nc_data$dim$latitude$vals)
   lon_index <- which_grid(longitude, our_nc_data$dim$longitude$vals)
   
-  var_df <- data.frame(date = as.Date(time, origin = "1950-01-01")) |>  ## make sure this is right!
+  var_df <- data.frame(date = as.Date(time, origin = "1950-01-01")) |>  ## make sure this is right! our_nc_data$dim$time$units
     mutate("{var_name}" := ncvar_get(our_nc_data, varid = var_name, 
                                      start = c(lon_index,lat_index, 1), 
                                      count = c(1,1, nt)))
