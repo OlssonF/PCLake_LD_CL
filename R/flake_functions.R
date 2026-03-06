@@ -57,8 +57,10 @@ setup_FLake <- function(lake_name,
                         elev,
                         lake_depth,
                         lake_fetch,
-                        lake_lightext = 'clear',
-                        met_dir = 'data/FLake', run_dir = 'data/FLake') {
+                        lake_lightext = 'clear', 
+                        outputfile = file.path(lake_name, paste0(lake_name,'.rslt')),
+                        met_dir = 'data/FLake', run_dir = 'data/FLake',
+                        make_met = T) {
   
   if (!dir.exists(file.path(run_dir, lake_name))) {
     dir.create(file.path(run_dir, lake_name),
@@ -69,67 +71,68 @@ setup_FLake <- function(lake_name,
   
   # Generate driver file (meteorology) ------------------------------------------
   # extract the data from the E-OBS files
-  met_vars <- c('qq', 'fg', 'tg', 'hu')
-  
-  met_obs <- data.frame(date = NA)
-  for (var in met_vars) {
-    eobs_files <- list.files('data/E-OBS', pattern = var, full.names = T)
-    met_obs <- map(eobs_files, get_EOBS_ts, var_name = var, 
-                 latitude = latitude, longitude = longitude) |> 
-      list_rbind() |> 
-      filter(between(date, 
-                     as_date('1998-01-01'),
-                     as_date('2024-01-01')),
-            # yday(date) != 366)
-            ) |>  # remove leap year days
-      full_join(met_obs, by = 'date')
+  if (make_met) {
+    met_vars <- c('qq', 'fg', 'tg', 'hu')
     
+    met_obs <- data.frame(date = NA)
+    for (var in met_vars) {
+      eobs_files <- list.files('data/E-OBS', pattern = var, full.names = T)
+      met_obs <- map(eobs_files, get_EOBS_ts, var_name = var, 
+                     latitude = latitude, longitude = longitude) |> 
+        list_rbind() |> 
+        filter(between(date, 
+                       as_date('1998-01-01'),
+                       as_date('2024-01-01')),
+               # yday(date) != 366)
+        ) |>  # remove leap year days
+        full_join(met_obs, by = 'date')
+      
+    }
+    
+    met_obs <- met_obs |> 
+      filter(!is.na(date)) |> # fill NAs
+      mutate(across(all_of(met_vars), zoo::na.approx))|> 
+      # Convert relative humidity (%) and temperature (°C)
+      # into actual vapor pressure (millibars, mb)
+      mutate(vp = calc_vaporpressure(temp = tg, relhum = hu))
+    
+    # Estimate cloud cover - start by calculating the clear sky for every hour
+    met_obs_hourly <- tibble(datetime = as.POSIXct(seq(ymd_hm(format(met_obs$date[1], '%Y-%m-%d %H:%M')), 
+                                                       ymd_hm(format(met_obs$date[nrow(met_obs)], '%Y-%m-%d %H:%M')) + hours(23), 
+                                                       by = '1 hour'), format ="%Y-%m-%d %H:%M")) |>
+      mutate(date = as_date(datetime))  |>
+      full_join(select(met_obs, date, tg, hu), by = 'date') |> filter(!is.na(datetime)) |> 
+      mutate(qq_clear = calc_clearskyrad(latitude, longitude, elev, datetime, temp = tg, relhum = hu))
+    
+    # compare the clear sky with observed to estimate cloud cover (as a fraction 0-1)
+    met_obs1 <- met_obs_hourly |> 
+      reframe(.by = date, qq_clear = mean(qq_clear)) |> 
+      full_join(met_obs, by = 'date') |> 
+      mutate(cc = calc_cc(clearsky = qq_clear, obs = qq))
+    
+    
+    
+    # get the annual cycle
+    met_obs_annual <- met_obs1 |> 
+      mutate(doy = yday(date)) |> 
+      reframe(.by = doy, across(all_of(c('hu', 'qq', 'tg', 'vp', 'fg', 'cc')), .fns = median)) |> # annual average
+      
+      # Generate a repeating time series
+      slice(rep(1:365, each = 10)) |> 
+      group_by(doy) |> 
+      mutate(rep = row_number()) |> ungroup() |> 
+      arrange(rep, doy) |> 
+      mutate(seqnum = row_number()) |> 
+      # select the met vars that go in the drivers
+      # order = Sequential number	Solar Radiation (W/m2)	Air Temperature (oC)	Air Humidity (mb)	Wind Speed (m/s)	Cloudiness (0-1)
+      select(seqnum, qq, tg, vp, fg, cc) |> 
+      mutate(across(where(is.double), ~round(.x, 3))) # make it easier to read
+    
+    
+    ## write the drivers file -----------------
+    met_file <- file.path(run_dir, lake_name, paste0(lake_name, '_met.dat'))
+    write_delim(met_obs_annual, file = met_file, col_names = F)
   }
-  
-  met_obs <- met_obs |> 
-    filter(!is.na(date)) |> # fill NAs
-    mutate(across(all_of(met_vars), zoo::na.approx))|> 
-    # Convert relative humidity (%) and temperature (°C)
-    # into actual vapor pressure (millibars, mb)
-    mutate(vp = calc_vaporpressure(temp = tg, relhum = hu))
-
-  # Estimate cloud cover - start by calculating the clear sky for every hour
-  met_obs_hourly <- tibble(datetime = as.POSIXct(seq(ymd_hm(format(met_obs$date[1], '%Y-%m-%d %H:%M')), 
-                            ymd_hm(format(met_obs$date[nrow(met_obs)], '%Y-%m-%d %H:%M')) + hours(23), 
-                            by = '1 hour'), format ="%Y-%m-%d %H:%M")) |>
-    mutate(date = as_date(datetime))  |>
-    full_join(select(met_obs, date, tg, hu), by = 'date') |> filter(!is.na(datetime)) |> 
-    mutate(qq_clear = calc_clearskyrad(latitude, longitude, elev, datetime, temp = tg, relhum = hu))
-  
-  # compare the clear sky with observed to estimate cloud cover (as a fraction 0-1)
-  met_obs1 <- met_obs_hourly |> 
-    reframe(.by = date, qq_clear = mean(qq_clear)) |> 
-    full_join(met_obs, by = 'date') |> 
-    mutate(cc = calc_cc(clearsky = qq_clear, obs = qq))
-  
-  
-  
-  # get the annual cycle
-  met_obs_annual <- met_obs1 |> 
-    mutate(doy = yday(date)) |> 
-    reframe(.by = doy, across(all_of(c('hu', 'qq', 'tg', 'vp', 'fg', 'cc')), .fns = median)) |> # annual average
-    
-  # Generate a repeating time series
-    slice(rep(1:365, each = 10)) |> 
-    group_by(doy) |> 
-    mutate(rep = row_number()) |> ungroup() |> 
-    arrange(rep, doy) |> 
-    mutate(seqnum = row_number()) |> 
-    # select the met vars that go in the drivers
-    # order = Sequential number	Solar Radiation (W/m2)	Air Temperature (oC)	Air Humidity (mb)	Wind Speed (m/s)	Cloudiness (0-1)
-    select(seqnum, qq, tg, vp, fg, cc) |> 
-    mutate(across(where(is.double), ~round(.x, 3))) # make it easier to read
-    
-  
-  ## write the drivers file -----------------
-  met_file <- file.path(run_dir, lake_name, paste0(lake_name, '_met.dat'))
-  write_delim(met_obs_annual, file = met_file, col_names = F)
-  
   
   # Generate nml file ----------------------------------
   lake_nml <- glmtools::read_nml('data/FLake/example.nml')
@@ -138,7 +141,7 @@ setup_FLake <- function(lake_name,
   
   ## Meteorology -------------
   lake_nml$METEO$meteofile     = file.path(lake_name, paste0(lake_name,'_met.dat'))
-  lake_nml$METEO$outputfile    = file.path(lake_name, paste0(lake_name,'.rslt'))
+  lake_nml$METEO$outputfile    = outputfile
   
   ## lake specific parameters -----------
   lake_nml$LAKE_PARAMS$depth_w_lk  = lake_depth     # Lake depth [m]
@@ -153,7 +156,7 @@ setup_FLake <- function(lake_name,
     if (lake_lightext == 'clear') {
       lake_lightext <- 0.5
     } else if (lake_lightext == 'turbid') {
-      lake_lightext <- 1
+      lake_lightext <- 2
     } else {
       stop('Light extinction should be numeric or "clear" or "turbid"')
     }
@@ -307,4 +310,17 @@ read_flake <- function(filename) {
   return(df)
 }
 
+
+plot_flake <- name <- function(filename, var = 'Ts', ylim, xlim) {
+  plot <- read_flake(filename) |> 
+    ggplot(aes(x = time, y = get(var))) +
+    geom_line() +
+    ggtitle(basename(filename)) +
+    theme_bw() +
+    labs(y = var) +
+    coord_cartesian(ylim = ylim,
+                    xlim = xlim)
+  
+  return(plot)
+}
 
