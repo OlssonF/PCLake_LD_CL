@@ -32,7 +32,13 @@ for (i in 1:length(lake_IDs)) {
     lake_ID_use <- 'SBAS'
   }
 
-  
+  # how to know the max - siple, take the max most common
+  use_max_depth <- val_data |> 
+    filter(site == lake_ID_use) |> 
+    group_by(depth) |> 
+    summarise(n = n()) |> 
+    filter(n > 20) |> 
+    slice_max(depth) |> pull(depth)
 
   ggarrange(val_data |> 
               filter(site == lake_ID_use ,
@@ -45,7 +51,7 @@ for (i in 1:length(lake_IDs)) {
               geom_smooth(method = 'gam')+
               coord_cartesian(ylim = c(0,30)) +
               theme_bw() +
-              labs(title = lake_ID_use),
+              labs(title = paste(lake_ID_use, 1, sep = '_')),
             read_flake(flake_IDs[1]) |> 
               slice_tail(n = 365) |> 
               ggplot(aes(x=time, y = Ts)) +
@@ -61,7 +67,38 @@ for (i in 1:length(lake_IDs)) {
               theme_bw() +
               labs(title = basename(flake_IDs[2])),
             nrow = 3) |> 
-    ggsave(filename = file.path('./data/flake/plots', paste0(lake_IDs[i], '_val.png')),
+    ggsave(filename = file.path('./data/flake/plots', paste0(lake_IDs[i], '_val_surface.png')),
+           width = 7, height = 12, units = 'cm')
+  
+  ggarrange(val_data |> 
+              filter(site == lake_ID_use ,
+                     depth <= use_max_depth) |> 
+              reframe(.by = date, value = mean(value, na.rm = T)) |> 
+              mutate(date = lubridate::parse_date_time2(date, 'dby', cutoff_2000 = 25),
+                     doy = yday(date),
+                     year = year(date)) |>
+              ggplot(aes(x=doy, y = value)) +
+              geom_point(aes(group = as_factor(year))) +
+              geom_smooth(method = 'gam')+
+              coord_cartesian(ylim = c(0,30)) +
+              theme_bw() +
+              labs(title = paste(lake_ID_use, use_max_depth, sep = '_')),
+            read_flake(flake_IDs[1]) |> 
+              slice_tail(n = 365) |> 
+              ggplot(aes(x=time, y = Tb)) +
+              geom_line() +
+              coord_cartesian(ylim = c(0,30)) +
+              theme_bw()+
+              labs(title = basename(flake_IDs[1])),
+            read_flake(flake_IDs[2]) |> 
+              slice_tail(n = 365) |> 
+              ggplot(aes(x=time, y = Tb)) +
+              geom_line() +
+              coord_cartesian(ylim = c(0,30)) +
+              theme_bw() +
+              labs(title = basename(flake_IDs[2])),
+            nrow = 3) |> 
+    ggsave(filename = file.path('./data/flake/plots', paste0(lake_IDs[i], '_val_bottom.png')),
            width = 7, height = 12, units = 'cm')
   
   
@@ -80,7 +117,3 @@ for (i in 1:length(lake_IDs)) {
     ggsave(filename = file.path('./data/flake/plots', paste0(lake_IDs[i], '_ML.png')),
            width = 12, height = 7, units = 'cm')
 }
-
-
-
-
