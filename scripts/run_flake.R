@@ -50,38 +50,39 @@ names(lake_names_lookup)[which(lake_names_lookup == 'Wind')] <- 29233
 # the NBAS and SBAS have seperate WBIDs but the one from the lakes portal has the combined one which is different
 
 # Run with "clear" light extinction -------------
-# for (i in 1:length(lake_names_lookup)) {
-#   # Select one lake at a time
-#   lake_name <- lake_names_lookup[i]
-#   message('Running ', lake_name)
-#   
-#   # Obtain the lake portal data (fetch, depth etc.)
-#   lakes_portal_subset <- lakes_portal_df |> 
-#     filter(str_detect(NAME, lake_name))
-#   
-#   latitude <- lakes_portal_subset |> 
-#     select(WBLAT) |> pull()
-#   
-#   longitude <- lakes_portal_subset |> 
-#     select(WBLONG) |> pull()
-#   
-#   elev <- lakes_portal_subset |> 
-#     select(WBALT) |> pull()
-#   
-#   lake_fetch <- lakes_portal_subset$FETCH_KM * 1000 # fetch, convert from km to m - is this actually a good estimate
-#   lake_depth <- lakes_portal_subset$MNDP # mean depth
-#   
-#   # Set up the drivers and nml files
-#   setup_FLake(lake_name, 
-#               latitude, longitude, 
-#               elev, lake_depth, lake_fetch,
-#               lake_lightext = 'clear',
-#               outputfile = file.path(lake_name, paste0(lake_name,'_clear.rslt')))
-#   
-#   # run FLake
-#   run_FLake(lake_name, )
-#   
-# }
+for (i in 1:length(lake_names_lookup)) {
+  # Select one lake at a time
+  lake_name <- lake_names_lookup[i]
+  message('Running ', lake_name)
+
+  # Obtain the lake portal data (fetch, depth etc.)
+  lakes_portal_subset <- lakes_portal_df |>
+    filter(str_detect(NAME, lake_name))
+
+  latitude <- lakes_portal_subset |>
+    select(WBLAT) |> pull()
+
+  longitude <- lakes_portal_subset |>
+    select(WBLONG) |> pull()
+
+  elev <- lakes_portal_subset |>
+    select(WBALT) |> pull()
+
+  lake_fetch <- lakes_portal_subset$FETCH_KM * 1000 # fetch, convert from km to m - is this actually a good estimate
+  lake_depth <- lakes_portal_subset$MNDP # mean depth
+
+  # Set up the drivers and nml files
+  setup_FLake(lake_name,
+              latitude, longitude,
+              elev, lake_depth, lake_fetch,
+              lake_lightext = 'clear',
+              calc_cc = T,
+              outputfile = file.path(lake_name, paste0(lake_name,'_clear.rslt')))
+
+  # run FLake
+  run_FLake(lake_name)
+
+}
 
 
 
