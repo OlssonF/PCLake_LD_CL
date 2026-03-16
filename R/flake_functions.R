@@ -58,6 +58,7 @@ setup_FLake <- function(lake_name,
                         lake_depth,
                         lake_fetch,
                         lake_lightext = 'clear', 
+                        calc_cc = T,
                         outputfile = file.path(lake_name, paste0(lake_name,'.rslt')),
                         met_dir = 'data/FLake', run_dir = 'data/FLake',
                         make_met = T) {
@@ -96,20 +97,24 @@ setup_FLake <- function(lake_name,
       # into actual vapor pressure (millibars, mb)
       mutate(vp = calc_vaporpressure(temp = tg, relhum = hu))
     
-    # Estimate cloud cover - start by calculating the clear sky for every hour
-    met_obs_hourly <- tibble(datetime = as.POSIXct(seq(ymd_hm(format(met_obs$date[1], '%Y-%m-%d %H:%M')), 
-                                                       ymd_hm(format(met_obs$date[nrow(met_obs)], '%Y-%m-%d %H:%M')) + hours(23), 
-                                                       by = '1 hour'), format ="%Y-%m-%d %H:%M")) |>
-      mutate(date = as_date(datetime))  |>
-      full_join(select(met_obs, date, tg, hu), by = 'date') |> filter(!is.na(datetime)) |> 
-      mutate(qq_clear = calc_clearskyrad(latitude, longitude, elev, datetime, temp = tg, relhum = hu))
-    
-    # compare the clear sky with observed to estimate cloud cover (as a fraction 0-1)
-    met_obs1 <- met_obs_hourly |> 
-      reframe(.by = date, qq_clear = mean(qq_clear)) |> 
-      full_join(met_obs, by = 'date') |> 
-      mutate(cc = calc_cc(clearsky = qq_clear, obs = qq))
-    
+    if (calc_cc) {
+      # Estimate cloud cover - start by calculating the clear sky for every hour
+      met_obs_hourly <- tibble(datetime = as.POSIXct(seq(ymd_hm(format(met_obs$date[1], '%Y-%m-%d %H:%M')), 
+                                                         ymd_hm(format(met_obs$date[nrow(met_obs)], '%Y-%m-%d %H:%M')) + hours(23), 
+                                                         by = '1 hour'), format ="%Y-%m-%d %H:%M")) |>
+        mutate(date = as_date(datetime))  |>
+        full_join(select(met_obs, date, tg, hu), by = 'date') |> filter(!is.na(datetime)) |> 
+        mutate(qq_clear = calc_clearskyrad(latitude, longitude, elev, datetime, temp = tg, relhum = hu))
+      
+      # compare the clear sky with observed to estimate cloud cover (as a fraction 0-1)
+      met_obs1 <- met_obs_hourly |> 
+        reframe(.by = date, qq_clear = mean(qq_clear)) |> 
+        full_join(met_obs, by = 'date') |> 
+        mutate(cc = calc_cc(clearsky = qq_clear, obs = qq))
+    } else {
+      met_obs1 <- met_obs |>  
+        mutate(cc = 0.75)
+    }
     
     
     # get the annual cycle
@@ -142,11 +147,12 @@ setup_FLake <- function(lake_name,
   ## Meteorology -------------
   lake_nml$METEO$meteofile     = file.path(lake_name, paste0(lake_name,'_met.dat'))
   lake_nml$METEO$outputfile    = outputfile
+  lake_nml$METEO$`z_wind_m(1)` = 2 # TRY THIS
   
   ## lake specific parameters -----------
   lake_nml$LAKE_PARAMS$depth_w_lk  = lake_depth     # Lake depth [m]
   lake_nml$LAKE_PARAMS$fetch_lk    = lake_fetch     # Typical wind fetch [m] 
-  lake_nml$LAKE_PARAMS$sediments_on = FALSE   	    # .FALSE. if the sediments layer is switched off
+  lake_nml$LAKE_PARAMS$sediments_on = TRUE   	    # .FALSE. if the sediments layer is switched off
   lake_nml$LAKE_PARAMS$depth_bs_lk =  4.0          # Depth of the thermally active layer of the bottom sediments [m]
   lake_nml$LAKE_PARAMS$T_bs_lk     =  6.0           # Temperature at the outer edge of the thermally active layer of the bottom sediments [C]
   lake_nml$LAKE_PARAMS$latitude_lk = latitude       # Geographical latitude [dgr]
