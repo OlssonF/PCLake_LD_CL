@@ -68,7 +68,8 @@ for (i in 1:length(lake_names_lookup)) {
   elev <- lakes_portal_subset |>
     select(WBALT) |> pull()
 
-  lake_fetch <- lakes_portal_subset$FETCH_KM * 1000 # fetch, convert from km to m - is this actually a good estimate
+  # lake_fetch <- lakes_portal_subset$FETCH_KM * 1000 # fetch, convert from km to m - is this actually a good estimate (maximum fetch)
+  lake_fetch <- sqrt(lakes_portal_subset$WBSAREA*10000) # convert from Ha->m2 (typical fetch)
   lake_depth <- lakes_portal_subset$MNDP # mean depth
 
   # Set up the drivers and nml files
@@ -76,7 +77,7 @@ for (i in 1:length(lake_names_lookup)) {
               latitude, longitude,
               elev, lake_depth, lake_fetch,
               lake_lightext = 'clear',
-              calc_cc = T,
+              calc_cc = F, make_met = T,
               outputfile = file.path(lake_name, paste0(lake_name,'_clear.rslt')))
 
   # run FLake
@@ -113,8 +114,9 @@ for (i in 1:length(lake_names_lookup)) {
               latitude, longitude, 
               elev, lake_depth, lake_fetch,
               lake_lightext = 'turbid',
-              outputfile = file.path(lake_name, paste0(lake_name,'_turbid.rslt')),
-              make_met = F)
+              calc_cc = F,
+              make_met = F,
+              outputfile = file.path(lake_name, paste0(lake_name,'_turbid.rslt')))
   
   # run FLake
   run_FLake(lake_name)
