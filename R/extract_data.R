@@ -103,7 +103,7 @@ get_era5_ts <- function(var_name, latitude, longitude, daily = T) {
   
   nt <- dim(time) # how long is the time series
   
-  var_df <- data.frame(date = as_datetime(time * 3600, tz = 'UTC')) |> 
+  var_df <- data.frame(datetime = as_datetime(time * 3600, tz = 'UTC')) |> 
                                           # it's in hours since 1970, convert to secs |>  
     ## make sure this is right! our_nc_data$dim$valid_time$units
     mutate("{var_name}" := ncvar_get(our_nc_data, varid = var_name))
@@ -113,6 +113,20 @@ get_era5_ts <- function(var_name, latitude, longitude, daily = T) {
     var_df <- var_df |> 
       mutate(across(all_of(var_name), ~ .x / 3600))
   }
-  return(var_df)
+  
+  if (daily) {
+    
+    var_df_daily <- var_df |> 
+      mutate(date = as_date(datetime)) |> 
+      reframe(.by = 'date',
+              across(all_of(var_name), mean))
+    
+    return(var_df_daily)
+  } else {
+    
+    return(var_df)
+    
+  }
+  
 }
 
