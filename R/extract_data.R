@@ -63,3 +63,56 @@ get_EOBS_ts <- function(nc_file, var_name, latitude, longitude) {
   
   return(var_df)
 }
+
+
+
+#' Extract timeseries from the downloaded ERA5-Land data
+#'
+#' @param var_name variable name in ERA
+#' @param latitude 
+#' @param longitude 
+#' @param daily calculate the daily means?
+#'
+#' @returns
+#' @export
+#'
+#' @examples
+get_era5_ts <- function(var_name, latitude, longitude, daily = T) {
+  
+  file_var <- if (var_name %in% c('u10', 'v10')) {
+    "wind"
+  } else if (var_name %in% c("d2m", "t2m")) {
+    "temperature"
+  } else if (var_name %in% c("ssrd")) {
+    "radiation"
+  } else {
+    stop('var_name is not in the era5 files (u10, v10, d2m, t2m, ssrd')
+  }
+  
+  
+  lat_round <- formatC(floor(latitude / 0.1) * 0.1, format = "f", digits = 2)
+  long_round <- formatC(floor(longitude / 0.1) * 0.1, format = "f", digits = 2)
+
+  nc_path <- paste(lat_round, long_round, sep ="_")
+  nc_file <- list.files(file.path("data", "era5_grid", nc_path, "nc"),
+                        full.names = T)[str_detect(list.files(file.path("data", "era5_grid", nc_path, "nc")), file_var)]
+  
+  # Open the .nc file
+  our_nc_data <- nc_open(nc_file)
+  time <- ncvar_get(our_nc_data, "valid_time") 
+  
+  nt <- dim(time) # how long is the time series
+  
+  var_df <- data.frame(date = as_datetime(time * 3600, tz = 'UTC')) |> 
+                                          # it's in hours since 1970, convert to secs |>  
+    ## make sure this is right! our_nc_data$dim$valid_time$units
+    mutate("{var_name}" := ncvar_get(our_nc_data, varid = var_name))
+  
+  if (var_name == 'ssrd') {
+    # deaccumulate radiation values
+    var_df <- var_df |> 
+      mutate(across(all_of(var_name), ~ .x / 3600))
+  }
+  return(var_df)
+}
+
