@@ -61,7 +61,7 @@ setup_FLake <- function(lake_name,
                         calc_cc = T,
                         outputfile = file.path(lake_name, paste0(lake_name,'.rslt')),
                         met_dir = 'data/FLake', run_dir = 'data/FLake',
-                        make_met = T) {
+                        make_met = T, met_type = 'ERA-Land') {
   
   if (!dir.exists(file.path(run_dir, lake_name))) {
     dir.create(file.path(run_dir, lake_name),
@@ -73,44 +73,67 @@ setup_FLake <- function(lake_name,
   # Generate driver file (meteorology) ------------------------------------------
   # extract the data from the E-OBS files
   if (make_met) {
-    met_vars <- c('qq', 'fg', 'tg', 'hu')
-    
-    met_obs <- data.frame(date = NA)
-    for (var in met_vars) {
-      eobs_files <- list.files('data/E-OBS', pattern = var, full.names = T)
-      met_obs <- map(eobs_files, get_EOBS_ts, var_name = var, 
-                     latitude = latitude, longitude = longitude) |> 
-        list_rbind() |> 
-        filter(between(date, 
-                       as_date('1998-01-01'),
-                       as_date('2024-01-01')),
-               # yday(date) != 366)
-        ) |>  # remove leap year days
-        full_join(met_obs, by = 'date')
+    if (met_type == 'E-OBS') {
+      met_vars <- c('qq', 'fg', 'tg', 'hu')
+      names(met_vars) <- c('sr', 'ws', 'at', 'hu')
       
+      met_obs <- data.frame(date = NA)
+      for (var in met_vars) {
+        eobs_files <- list.files('data/E-OBS', pattern = var, full.names = T)
+        met_obs <- map(eobs_files, get_EOBS_ts, var_name = var, 
+                       latitude = latitude, longitude = longitude) |> 
+          list_rbind() |> 
+          filter(between(date, 
+                         as_date('1998-01-01'),
+                         as_date('2024-01-01'))) |> 
+          full_join(met_obs, by = 'date') 
+      }
+      
+      met_obs <- met_obs |> 
+        filter(!is.na(date)) |> # fill NAs
+        # Convert relative humidity (%) and temperature (°C)
+        # into actual vapor pressure (millibars, mb)
+        mutate(vp = calc_vaporpressure(temp = tg, relhum = hu)) |> 
+        rename(!!!met_vars) |> 
+        select(c('date', 'vp', names(met_vars))) |> 
+        mutate(across(all_of(names(met_vars)), zoo::na.approx))
+      
+      } if (met_type == 'ERA-Land') {
+        met_vars <- c('u10', 'v10', 'ssrd', "d2m", "t2m")
+        names(met_vars) <- c('u10', 'v10', 'sr', 'dpt', 'at')
+        
+        met_obs <- map(met_vars, get_era5_ts, 
+            latitude = latitude, longitude = longitude) |> 
+          reduce(full_join, by = 'date') |> 
+          filter(between(date, 
+                         as_date('1998-01-01'),
+                         as_date('2024-01-01'))) |> 
+          rename(!!!met_vars) |> 
+          mutate(ws = sqrt(u10^2 + v10^2)) |> #,
+                 ####NEED TO CALCULATE VAPOUR PRESSURE FROM ERA DATA) |> 
+                 #########################################################
+        ##################################################################
+          mutate(across(all_of(met_vars), zoo::na.approx))
+        
+      }
     }
     
-    met_obs <- met_obs |> 
-      filter(!is.na(date)) |> # fill NAs
-      mutate(across(all_of(met_vars), zoo::na.approx))|> 
-      # Convert relative humidity (%) and temperature (°C)
-      # into actual vapor pressure (millibars, mb)
-      mutate(vp = calc_vaporpressure(temp = tg, relhum = hu))
     
     if (calc_cc) {
-      # Estimate cloud cover - start by calculating the clear sky for every hour
-      met_obs_hourly <- tibble(datetime = as.POSIXct(seq(ymd_hm(format(met_obs$date[1], '%Y-%m-%d %H:%M')), 
-                                                         ymd_hm(format(met_obs$date[nrow(met_obs)], '%Y-%m-%d %H:%M')) + hours(23), 
-                                                         by = '1 hour'), format ="%Y-%m-%d %H:%M")) |>
-        mutate(date = as_date(datetime))  |>
-        full_join(select(met_obs, date, tg, hu), by = 'date') |> filter(!is.na(datetime)) |> 
-        mutate(qq_clear = calc_clearskyrad(latitude, longitude, elev, datetime, temp = tg, relhum = hu))
-      
-      # compare the clear sky with observed to estimate cloud cover (as a fraction 0-1)
-      met_obs1 <- met_obs_hourly |> 
-        reframe(.by = date, qq_clear = mean(qq_clear)) |> 
-        full_join(met_obs, by = 'date') |> 
-        mutate(cc = calc_cc(clearsky = qq_clear, obs = qq))
+      stop("Can't calcualte cloud cover!")
+      # # Estimate cloud cover - start by calculating the clear sky for every hour
+      # met_obs_hourly <- tibble(datetime = as.POSIXct(seq(ymd_hm(format(met_obs$date[1], '%Y-%m-%d %H:%M')), 
+      #                                                    ymd_hm(format(met_obs$date[nrow(met_obs)], '%Y-%m-%d %H:%M')) + hours(23), 
+      #                                                    by = '1 hour'), format ="%Y-%m-%d %H:%M")) |>
+      #   mutate(date = as_date(datetime))  |>
+      #   full_join(select(met_obs, date, tg, hu), by = 'date') |> filter(!is.na(datetime)) |> 
+      #   mutate(qq_clear = calc_clearskyrad(latitude, longitude, elev, datetime, temp = tg, relhum = hu))
+      # 
+      # # compare the clear sky with observed to estimate cloud cover (as a fraction 0-1)
+      # met_obs1 <- met_obs_hourly |> 
+      #   reframe(.by = date, qq_clear = mean(qq_clear)) |> 
+      #   full_join(met_obs, by = 'date') |> 
+      #   mutate(cc = calc_cc(clearsky = qq_clear, obs = qq))
     } else {
       met_obs1 <- met_obs |>  
         mutate(cc = 0.75)
@@ -120,7 +143,7 @@ setup_FLake <- function(lake_name,
     # get the annual cycle
     met_obs_annual <- met_obs1 |> 
       mutate(doy = yday(date)) |> 
-      reframe(.by = doy, across(all_of(c('hu', 'qq', 'tg', 'vp', 'fg', 'cc')), .fns = median)) |> # annual average
+      reframe(.by = doy, across(all_of(c('sr', 'at', 'vp', 'ws', 'cc')), .fns = median)) |> # annual average
       
       # Generate a repeating time series
       slice(rep(1:365, each = 10)) |> 
@@ -130,7 +153,7 @@ setup_FLake <- function(lake_name,
       mutate(seqnum = row_number()) |> 
       # select the met vars that go in the drivers
       # order = Sequential number	Solar Radiation (W/m2)	Air Temperature (oC)	Air Humidity (mb)	Wind Speed (m/s)	Cloudiness (0-1)
-      select(seqnum, qq, tg, vp, fg, cc) |> 
+      select(seqnum, sr, at, vp, ws, cc) |> 
       mutate(across(where(is.double), ~round(.x, 3))) # make it easier to read
     
     
@@ -147,7 +170,7 @@ setup_FLake <- function(lake_name,
   ## Meteorology -------------
   lake_nml$METEO$meteofile     = file.path(lake_name, paste0(lake_name,'_met.dat'))
   lake_nml$METEO$outputfile    = outputfile
-  lake_nml$METEO$`z_wind_m(1)` = 2 # TRY THIS
+  lake_nml$METEO$`z_wind_m(1)` = 2 # TRY THIS as 2
   
   ## lake specific parameters -----------
   lake_nml$LAKE_PARAMS$depth_w_lk  = lake_depth     # Lake depth [m]
