@@ -43,9 +43,13 @@ dir.create('data/FLake', showWarnings = F)
 #' @param lake_depth mean depth 
 #' @param lake_fetch 
 #' @param lake_lightext numeric value or "clear" or "turbid"
-#' @param met_dir 
-#' @param run_dir 
+#' @param met_dir where to put the met files
+#' @param run_dir where is the flake exe
 #' @param elev 
+#' @param calc_cc should cloud cover be calculated from SR?
+#' @param outputfile name of the flake results file
+#' @param make_met make new met files?
+#' @param met_type which met, ERA-Land of E-OBS
 #'
 #' @returns
 #' @export
@@ -61,7 +65,7 @@ setup_FLake <- function(lake_name,
                         calc_cc = T,
                         outputfile = file.path(lake_name, paste0(lake_name,'.rslt')),
                         met_dir = 'data/FLake', run_dir = 'data/FLake',
-                        make_met = T, met_type = 'ERA-Land') {
+                        make_met = T, met_type = 'ERA-Land', use_annual = T) {
   
   if (!dir.exists(file.path(run_dir, lake_name))) {
     dir.create(file.path(run_dir, lake_name),
@@ -93,31 +97,30 @@ setup_FLake <- function(lake_name,
         filter(!is.na(date)) |> # fill NAs
         # Convert relative humidity (%) and temperature (°C)
         # into actual vapor pressure (millibars, mb)
-        mutate(vp = calc_vaporpressure(temp = tg, relhum = hu)) |> 
+        mutate(vp = calc_vaporpressure(air_temp = tg, relhum = hu)) |> 
         rename(!!!met_vars) |> 
         select(c('date', 'vp', names(met_vars))) |> 
-        mutate(across(all_of(names(met_vars)), zoo::na.approx))
+        mutate(across(where(is.numeric), zoo::na.approx))
       
-      } if (met_type == 'ERA-Land') {
-        met_vars <- c('u10', 'v10', 'ssrd', "d2m", "t2m")
-        names(met_vars) <- c('u10', 'v10', 'sr', 'dpt', 'at')
-        
-        met_obs <- map(met_vars, get_era5_ts, 
-            latitude = latitude, longitude = longitude) |> 
-          reduce(full_join, by = 'date') |> 
-          filter(between(date, 
-                         as_date('1998-01-01'),
-                         as_date('2024-01-01'))) |> 
-          rename(!!!met_vars) |> 
-          mutate(ws = sqrt(u10^2 + v10^2)) |> #,
-                 ####NEED TO CALCULATE VAPOUR PRESSURE FROM ERA DATA) |> 
-                 #########################################################
-        ##################################################################
-          mutate(across(all_of(met_vars), zoo::na.approx))
-        
-      }
+    } else if (met_type == 'ERA-Land') {
+      met_vars <- c('u10', 'v10', 'ssrd', "d2m", "t2m")
+      names(met_vars) <- c('u10', 'v10', 'sr', 'dpt', 'at')
+      
+      met_obs <- map(met_vars, get_era5_ts, 
+                     latitude = latitude, longitude = longitude) |> 
+        reduce(full_join, by = 'date') |> 
+        filter(between(date, 
+                       as_date('1998-01-01'),
+                       as_date('2025-01-01'))) |> 
+        rename(!!!met_vars) |> 
+        mutate(at = at - 273.15, # convert to C
+               dpt = dpt - 273.15,
+               ws = sqrt(u10^2 + v10^2), # convert to wind speed
+               vp = calc_vaporpressure(dewpoint_temp = dpt)) |> 
+        mutate(across(where(is.numeric), zoo::na.approx)) |> 
+        select(-u10, -v10, -dpt)
+      
     }
-    
     
     if (calc_cc) {
       stop("Can't calcualte cloud cover!")
@@ -139,28 +142,42 @@ setup_FLake <- function(lake_name,
         mutate(cc = 0.75)
     }
     
-    
-    # get the annual cycle
-    met_obs_annual <- met_obs1 |> 
-      mutate(doy = yday(date)) |> 
-      reframe(.by = doy, across(all_of(c('sr', 'at', 'vp', 'ws', 'cc')), .fns = median)) |> # annual average
+    if (use_annual) {
+      # get the annual cycle
+      met_obs_annual <- met_obs1 |> 
+        mutate(doy = yday(date)) |> 
+        reframe(.by = doy, across(all_of(c('sr', 'at', 'vp', 'ws', 'cc')), .fns = median)) |> # annual average
+        
+        # Generate a repeating time series
+        slice(rep(1:365, each = 10)) |> 
+        group_by(doy) |> 
+        mutate(rep = row_number()) |> ungroup() |> 
+        arrange(rep, doy) |> 
+        mutate(seqnum = row_number()) |> 
+        # select the met vars that go in the drivers
+        # order = Sequential number	Solar Radiation (W/m2)	Air Temperature (oC)	Air Humidity (mb)	Wind Speed (m/s)	Cloudiness (0-1)
+        select(seqnum, sr, at, vp, ws, cc) |> 
+        mutate(across(where(is.double), ~round(.x, 3))) # make it easier to read
       
-      # Generate a repeating time series
-      slice(rep(1:365, each = 10)) |> 
-      group_by(doy) |> 
-      mutate(rep = row_number()) |> ungroup() |> 
-      arrange(rep, doy) |> 
-      mutate(seqnum = row_number()) |> 
-      # select the met vars that go in the drivers
-      # order = Sequential number	Solar Radiation (W/m2)	Air Temperature (oC)	Air Humidity (mb)	Wind Speed (m/s)	Cloudiness (0-1)
-      select(seqnum, sr, at, vp, ws, cc) |> 
-      mutate(across(where(is.double), ~round(.x, 3))) # make it easier to read
+      ## write the drivers file -----------------
+      met_file <- file.path(run_dir, lake_name, paste0(lake_name, '_met.dat'))
+      write_delim(met_obs_annual, file = met_file, col_names = F)
+    } else {
+      # get the annual cycle
+      met_obs_ts <- met_obs1 |> 
+        mutate(seqnum = row_number()) |> 
+        # select the met vars that go in the drivers
+        # order = Sequential number	Solar Radiation (W/m2)	Air Temperature (oC)	Air Humidity (mb)	Wind Speed (m/s)	Cloudiness (0-1)
+        select(seqnum, sr, at, vp, ws, cc) |> 
+        mutate(across(where(is.double), ~round(.x, 3))) # make it easier to read
+      
+      ## write the drivers file -----------------
+      met_file <- file.path(run_dir, lake_name, paste0(lake_name, '_met.dat'))
+      write_delim(met_obs_ts, file = met_file, col_names = F)
+    }
     
-    
-    ## write the drivers file -----------------
-    met_file <- file.path(run_dir, lake_name, paste0(lake_name, '_met.dat'))
-    write_delim(met_obs_annual, file = met_file, col_names = F)
   }
+  
   
   # Generate nml file ----------------------------------
   lake_nml <- glmtools::read_nml('data/FLake/example.nml')
@@ -194,7 +211,7 @@ setup_FLake <- function(lake_name,
   lake_nml$TRANSPARENCY$extincoef_optic = lake_lightext   # Extinction coefficients 
   
   glmtools::write_nml(lake_nml, file = file.path(run_dir, lake_name, paste0(lake_name, '.nml')))
-
+  
 }
 
 #' Run flake exe
@@ -216,22 +233,33 @@ run_FLake <- function(lake_name, run_dir = 'data/FLake') {
 
 #' calculate vapour pressure from relative humidity and temperature using Tetens formula
 #'
-#' @param temp air temperature in celcius
 #' @param relhum relative humidity (%)
+#' @param air_temp air temperature, C
+#' @param dewpoint_temp dewpoint temperature, C
 #'
 #' @returns
 #' @export
 #'
 #' @examples
-calc_vaporpressure <- function(temp, relhum) {
-  # Saturation vapor pressure using Tetens formula (mb)
-  e_s <- 6.112 * exp((17.67 * temp) / (temp + 243.5))
+calc_vaporpressure <- function(air_temp = NULL, relhum = NULL, dewpoint_temp = NULL) {
+  ##https://www.weather.gov/media/epz/wxcalc/vaporPressure.pdf
   
-  # Actual vapor pressure
-  e <- (relhum / 100) * e_s
-  
+  if (is.null(dewpoint_temp)) {
+    if (is.null(relhum) | is.null(air_temp) ) {
+      stop('needs air temp and relative humidity if no dewpoint temp')
+    }
+    # Saturation vapor pressure using Tetens formula (mb)
+    e_s <- 6.11 * 10^((7.5 * air_temp) / (air_temp + 237.3))
+    
+    # Actual vapor pressure
+    e <- (relhum / 100) * e_s
+  } else {
+    message('Using dewpoint temp')
+    e <- 6.11 * 10^((7.5 * dewpoint_temp)/ (237.3 + dewpoint_temp))
+  }
   return(e)
 }
+
 
 
 #' Calculate cloud cover from daily mean solar radiation 
@@ -253,7 +281,7 @@ calc_vaporpressure <- function(temp, relhum) {
 
 calc_cc <- function(clearsky, obs) {
   
-    #if the simulated is 0, measured must be zero
+  #if the simulated is 0, measured must be zero
   #conditional statement to change the measured SR data
   qq_corr <- ifelse(clearsky == 0, 0, obs)
   
