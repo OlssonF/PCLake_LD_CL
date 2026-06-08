@@ -12,6 +12,8 @@ library(jsonlite)
 library(tidyverse)
 library(purrr)
 
+# to save the data locally or not?
+archive <- TRUE
 
 # within 50km of centre of Cumbria
 lat  <- 54.51
@@ -149,6 +151,9 @@ discharge_ratios <- full_join(monthly_ld_flow, annual_ld_flow,
   reframe(.by = c(station_id, label, month),
           mean_ratio = mean(ratio))
 
+if (archive) {
+  
+}
 # -------------------------------------------------# 
 # --------------- Nutrient scaling -----------------
 # -------------------------------------------------# 
@@ -208,7 +213,10 @@ get_samples <- function(sp, determinand) {
       dat <- data.frame(datetime = samp$member$phenomenonTime,
                         value = samp$member$hasResult$numericValue) |> 
         mutate(notation = sp, 
-               variable = samp$member$observedProperty$altLabel)
+               variable = samp$member$observedProperty$altLabel) |> 
+        # where the sample is < take the upper bound
+        mutate(BLQ = ifelse(str_detect(samp$member$hasSimpleResult, pattern = '<'), T, F),
+               value = ifelse(is.na(value), samp$member$hasResult$upperBound, value))
       
       dat_full <- bind_rows(dat_full, dat)
       
