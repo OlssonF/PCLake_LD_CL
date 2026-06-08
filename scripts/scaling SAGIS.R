@@ -321,7 +321,7 @@ full_join(monthly_samples, annual_samples,
   facet_wrap(~notation)
 
 nut_ratios <- full_join(monthly_samples, annual_samples,
-                         by = join_by(notation, altLabel, variable, year)) |>
+                        by = join_by(notation, altLabel, variable, year)) |>
   filter(!is.na(year)) |> 
   mutate(ratio = monthly_average/annual_average) |> 
   reframe(.by = c(notation, altLabel, variable, month),
@@ -335,8 +335,9 @@ nut_ratios |>
   geom_smooth(method = "gam", formula = y~s(x, bs = 'cc')) + 
   facet_wrap(~variable, nrow = 2) + 
   theme_bw() + 
-  geom_hline(yintercept = 1, linetype = 'dashed') + 
-  scale_x_continuous(labels = month.abb, breaks = 1:12)
+  geom_hline(yintercept = 1, linetype = 'dashed')  + 
+  scale_x_continuous(labels = month.abb[seq(1,12,2)], 
+                     breaks = seq(1,12,2))
 
 
 # -------------------------------------------------# 
@@ -359,3 +360,60 @@ discharge_ratios |>
   scale_x_continuous(labels = month.abb[seq(1,12,2)], 
                      breaks = seq(1,12,2))
 
+# 1. calculate the average concentration and discharge scalings
+av_scaling_nuts <- nut_ratios |> 
+  reframe(.by = c(month, variable),
+          nut_scaling = mean(mean_ratio, na.rm = T))
+
+av_scaling_discharge <- discharge_ratios |> 
+  reframe(.by = month,
+          discharge_scaling = mean(mean_ratio, na.rm = T))
+
+# 2. calculate the combined scaling by multiplying and "normalising" by proportional scaling
+combined_scaling <- full_join(av_scaling_nuts, av_scaling_discharge, by = "month") |> 
+  arrange(variable, month) |> 
+  mutate(total_scaling = nut_scaling * discharge_scaling) |> 
+  mutate(.by = variable,
+         rescaled = scales::rescale(total_scaling), #rescaled 0-1
+         prop_scale = total_scaling / sum(total_scaling))
+
+
+combined_scaling |>  # the sum adds to 1
+  ggplot(aes(x=month, y = prop_scale)) +
+  geom_bar(stat = 'identity') +
+  facet_wrap(~variable) + 
+  scale_x_continuous(labels = month.abb[seq(1,12,2)], breaks = seq(1,12,2))
+
+
+# 3. apply scalings to SAGIS annual loadings
+sagis_loads <- read_csv("data/FW_ Request for information - Ref_ EIR2026_11092GC/lake_loads.csv", show_col_types = F) |> 
+  mutate(value = ifelse(is.na(inlake_summary), mean_value, inlake_summary)) |> 
+  filter(variable %in% c('Nitrate', 'Total_Phosphorus'))
+
+sagis_monthly <- sagis_loads |> 
+  mutate(variable = ifelse(variable == 'Nitrate', 'Nitrate-N', 
+                           ifelse(variable == 'Total_Phosphorus', 'Phosphorus-P', NA))) |> 
+  full_join(combined_scaling, by = join_by(variable),
+            relationship = 'many-to-many') |> 
+  mutate(monthly_apportion = value * prop_scale) 
+
+sagis_monthly |> 
+  ggplot(aes(x = month, y = monthly_apportion, group = NAME)) +
+  geom_point() +
+  facet_wrap(~variable, scales = 'free')  + 
+  scale_x_continuous(labels = month.abb[seq(1,12,2)], 
+                     breaks = seq(1,12,2)) +
+  theme_bw()
+
+
+sagis_monthly |> 
+  filter(NAME %in% c("Ullswater", 'Windermere', 'Bowscale Tarn', 'Grasmere')) |> 
+  ggplot(aes(x = NAME, y = monthly_apportion, fill = as_factor(month))) + 
+  geom_bar(position="stack", stat="identity") +
+  facet_wrap(~variable, scales = 'free') +
+  theme_bw() +
+  geom_point(aes(y = value))
+
+
+sagis_monthly |> 
+  filter(NAME %in% c("Ullswater", 'Windermere', 'Bowscale Tarn', 'Grasmere'))
