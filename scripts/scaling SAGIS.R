@@ -58,7 +58,7 @@ station_ids_flow <- stations_with_flow$stationGuid
 #' @examples
 get_flow_data <- function(station_id) {
   
-  
+  message(station_id)
   # 1. Get station metadata
   station_url <- paste0(
     "https://environment.data.gov.uk/hydrology/id/measures/", 
@@ -117,6 +117,12 @@ all_ld_flow |>
   scale_x_date(date_labels = "%d %b", name = 'Day of year') +
   theme_bw()
 
+if (archive) {
+  all_ld_flow |> 
+    write_csv("data/EArivers_archive/flow_measurements.csv")
+}
+
+
 # ratio between average monthly discharge and average annual discharge
 # calculate annual average discharge per river
 annual_ld_flow <- all_ld_flow |>
@@ -151,9 +157,6 @@ discharge_ratios <- full_join(monthly_ld_flow, annual_ld_flow,
   reframe(.by = c(station_id, label, month),
           mean_ratio = mean(ratio))
 
-if (archive) {
-  
-}
 # -------------------------------------------------# 
 # --------------- Nutrient scaling -----------------
 # -------------------------------------------------# 
@@ -187,7 +190,7 @@ while (rows == 250) {
 
 sampling_points <- station_ids_wq$notation
 
-# Step 2: ffunction to grab a time series of sampling point and determinand
+# Step 2: function to grab a time series of sampling point and determinands
 get_samples <- function(sp, determinand) {
   
   message(sp)
@@ -238,8 +241,11 @@ get_samples <- function(sp, determinand) {
 }
 
 # combine with the sampling point information
-all_samples <- map(sampling_points, get_samples, 
-                   determinand = '0348') |> 
+point_det <- expand_grid(sampling_points, determinand = c('0348', '0117'))
+
+all_samples <- map2(point_det$sampling_points,
+                    point_det$determinand,
+                    get_samples) |> 
   list_rbind() |> 
   left_join(station_ids_wq, by = join_by(notation))
 
@@ -247,7 +253,68 @@ all_samples <- map(sampling_points, get_samples,
 all_samples |> 
   mutate(datetime = ymd_hms(datetime),
          date = ymd(format(datetime, "%Y-%m-%d"))) |>
+  filter(variable == 'Nitrate-N') |> 
   ggplot(aes(x=date, y= value)) +
   geom_point() +
   facet_wrap(~notation, scales = 'free_y')
+
+all_samples |> 
+  mutate(datetime = ymd_hms(datetime),
+         date = ymd(format(datetime, "%Y-%m-%d"))) |>
+  filter(variable == 'Phosphorus-P') |> 
+  ggplot(aes(x=date, y= value)) +
+  geom_point() +
+  facet_wrap(~notation, scales = 'free_y')
+
+if (archive) {
+  all_samples |> 
+    write_csv("data/EArivers_archive/nutrient_samples.csv")
+}
+
+
+# ratio between average monthly concentration and average annual concentration
+# calculate annual average concentration per river
+annual_samples <- all_samples |>
+  mutate(# set the first day as Oct 1 (of the next year)
+    year = year(datetime)) |> # - months(9)) + 1) |> 
+  reframe(.by = all_of(c('notation', 'variable', 'altLabel', 'year')),
+          annual_average = mean(value, na.rm = T)) 
+
+monthly_samples <- all_samples |>
+  mutate(# set the first day as Oct 1
+    year = year(datetime),# - months(9)) + 1,
+    month = month(datetime)) |> # - months(9))) |> 
+  reframe(.by = all_of(c('notation', 'variable', 'altLabel', 'year', 'month')),
+          monthly_average = mean(value, na.rm = T)) 
+
+
+full_join(monthly_samples, annual_samples,
+          by = join_by(notation, variable, altLabel, year)) |>
+  filter(!is.na(year)) |> 
+  mutate(ratio = monthly_average/annual_average) |> 
+  reframe(.by = all_of(c('notation', 'variable', 'altLabel', 'month')),
+          mean_ratio = mean(ratio)) |> 
+  # mutate(month = ((month + 8) %% 12) + 1) |> # convert back to the actual month
+  ggplot(aes(x=month, y=mean_ratio, fill = variable))  + 
+  geom_bar(position="dodge", stat="identity") +
+  facet_wrap(~notation)
+
+
+full_join(monthly_samples, annual_samples,
+          by = join_by(notation, altLabel, variable, year)) |>
+  filter(!is.na(year)) |> 
+  mutate(ratio = monthly_average/annual_average) |> 
+  reframe(.by = all_of(c('notation', 'variable', 'altLabel', 'month')),
+          mean_ratio = mean(ratio)) |> 
+  # mutate(month = ((month + 8) %% 12) + 1) |> # convert back to the actual month
+  ggplot(aes(x=month, y=mean_ratio, fill = variable))  + 
+  geom_bar(position="dodge", stat="identity") +
+  facet_wrap(~notation)
+
+nut_ratios <- full_join(monthly_samples, annual_samples,
+                         by = join_by(notation, altLabel, variable, year)) |>
+  filter(!is.na(year)) |> 
+  mutate(ratio = monthly_average/annual_average) |> 
+  reframe(.by = c(notation, altLabel, variable, month),
+          mean_ratio = mean(ratio))
 
