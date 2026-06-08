@@ -110,6 +110,8 @@ nutrients <- c("Ammonia",
 sagis_nuts <- map(nutrients, extract_SAGIS) |> 
   list_rbind()
 
+sagis_nuts |> write_csv("data/FW_ Request for information - Ref_ EIR2026_11092GC/lake_loads.csv")
+
 # plot this by getting the polygons again
 ld_lakesportal <- readr::read_csv('data/Lake District_UKCEH Portal RT_data.csv') |> select(WBID)
 polys <- st_read("data/uklakes/data/uklakes_v3_6_poly.gpkg") |> 
@@ -118,6 +120,7 @@ polys <- st_read("data/uklakes/data/uklakes_v3_6_poly.gpkg") |>
 polys_summary <- polys %>%
   left_join(sagis_nuts, by = join_by(WBID, NAME)) |> 
   mutate(value = ifelse(is.na(inlake_summary), mean_value, inlake_summary))
+
 
 ggpubr::ggarrange(
   polys_summary |> 
@@ -161,5 +164,12 @@ ggpubr::ggarrange(
 polys_summary |> 
   ggplot() +
   geom_histogram(aes(x = value),) +
+  facet_wrap(~variable, scales = 'free') +
+  theme_bw()
+
+
+polys_summary |> 
+  ggplot() +
+  geom_point(aes(x = POLY_AREA_HA, y = value),) +
   facet_wrap(~variable, scales = 'free') +
   theme_bw()
