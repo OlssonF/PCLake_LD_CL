@@ -157,6 +157,15 @@ discharge_ratios <- full_join(monthly_ld_flow, annual_ld_flow,
   reframe(.by = c(station_id, label, month),
           mean_ratio = mean(ratio))
 
+discharge_ratios |> 
+  # mutate(month = ((month + 8) %% 12) + 1) |> # convert back to the actual month
+  ggplot(aes(x=month, y=mean_ratio))  + 
+  geom_point() + 
+  geom_smooth(method = "gam", formula = y~s(x, bs = 'cc')) + 
+  theme_bw() + 
+  geom_hline(yintercept = 1, linetype = 'dashed') + 
+  scale_x_continuous(labels = month.abb, breaks = 1:12)
+
 # -------------------------------------------------# 
 # --------------- Nutrient scaling -----------------
 # -------------------------------------------------# 
@@ -317,4 +326,36 @@ nut_ratios <- full_join(monthly_samples, annual_samples,
   mutate(ratio = monthly_average/annual_average) |> 
   reframe(.by = c(notation, altLabel, variable, month),
           mean_ratio = mean(ratio))
+
+
+nut_ratios |> 
+  # mutate(month = ((month + 8) %% 12) + 1) |> # convert back to the actual month
+  ggplot(aes(x=month, y=mean_ratio))  + 
+  geom_point() + 
+  geom_smooth(method = "gam", formula = y~s(x, bs = 'cc')) + 
+  facet_wrap(~variable, nrow = 2) + 
+  theme_bw() + 
+  geom_hline(yintercept = 1, linetype = 'dashed') + 
+  scale_x_continuous(labels = month.abb, breaks = 1:12)
+
+
+# -------------------------------------------------# 
+# --------------- Combine scalings -----------------
+# -------------------------------------------------# 
+nut_ratios |> 
+  reframe(.by = c(month, variable),
+          av_scaling = mean(mean_ratio, na.rm = T)) |> 
+  ggplot(aes(x=month, y=av_scaling)) +
+  geom_col() + 
+  scale_x_continuous(labels = month.abb[seq(1,12,2)], 
+                     breaks = seq(1,12,2)) +
+  facet_wrap(~variable)
+
+discharge_ratios |> 
+  reframe(.by = month,
+          av_scaling = mean(mean_ratio, na.rm = T)) |> 
+  ggplot(aes(x=month, y=av_scaling)) +
+  geom_col() + 
+  scale_x_continuous(labels = month.abb[seq(1,12,2)], 
+                     breaks = seq(1,12,2))
 
