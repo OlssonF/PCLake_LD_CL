@@ -29,7 +29,7 @@ extract_SAGIS <- function(variable = 'Total_Phosphorus',
     filter(WBID %in% ld_lakesportal$WBID) |> # filter to just the lake district lakes
     select(WBID, NAME)
   
-  catchments <- st_read("data/uklakes/data/uklakes_v3_7_catchments.gpkg") |> 
+  catchments <- st_read("data/uklakes/data/uklakes_v3_7_catchments.gpkg", quiet = T) |> 
     filter(WBID %in% ld_lakesportal$WBID) |> # filter to just the lake district lakes
     select(WBID, NAME)
   
@@ -58,8 +58,10 @@ extract_SAGIS <- function(variable = 'Total_Phosphorus',
   summary_tbl <- joined %>%
     st_drop_geometry() %>%
     group_by(WBID, NAME) %>%
-    summarise(inlake_n   = sum(!is.na(get(portion))),
-              inlake_summary = inlake_summary(get(portion)), .groups = 'drop')
+    summarise(#inlake_n   = sum(!is.na(get(portion))),
+              inlake_summary = inlake_summary(get(portion)), .groups = 'drop') |> 
+    pivot_longer(inlake_summary, names_to = 'source', values_to = 'value') |> 
+    mutate(distance_m = 0)
   
   # ------------------------------------------------------------#
   # 4. Identify polygons with NO intersecting points
@@ -98,10 +100,10 @@ extract_SAGIS <- function(variable = 'Total_Phosphorus',
       tibble(
         WBID = wbid,
         NAME = lake_poly$NAME,
-        nearest_id = nearest_pt$OBJECTID,
-        mean_value = nearest_pt[[portion]],
+       # nearest_id = nearest_pt$OBJECTID,
+        value = nearest_pt[[portion]],
         distance_m = as.numeric(dist),
-        source = "catchment"
+        source = "nearest_catchment"
       )
     } else {
       # 6b. fallback: nearest point from ALL SAGIS points
@@ -111,10 +113,10 @@ extract_SAGIS <- function(variable = 'Total_Phosphorus',
       tibble(
         WBID = wbid,
         NAME = lake_poly$NAME,
-        nearest_id = nearest_pt$OBJECTID,
-        mean_value = nearest_pt[[portion]],
+        #nearest_id = nearest_pt$OBJECTID,
+        value = nearest_pt[[portion]],
         distance_m = as.numeric(dist),
-        source = "fallback_all_points"
+        source = "nearest_all"
       )
     }
   })
@@ -123,7 +125,7 @@ extract_SAGIS <- function(variable = 'Total_Phosphorus',
   # 7. Combine outputs
   # ------------------------------------------------------------#
   
-  out <- bind_rows(summary_tbl, nearest_tbl) %>%
+  out <- bind_rows(summary_tbl, nearest_results) %>%
     mutate(variable = variable)
   
   return(out)
