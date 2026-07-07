@@ -48,8 +48,7 @@ if (plot) {
     filter(WBID %in% ld_lakesportal$WBID) # filter to just the lake district lakes
   
   polys_summary <- polys %>%
-    left_join(sagis_nuts, by = join_by(WBID, NAME)) |> 
-    mutate(value = ifelse(is.na(inlake_summary), mean_value, inlake_summary))
+    left_join(sagis_nuts, by = join_by(WBID, NAME))
   
   
   ggpubr::ggarrange(
@@ -197,7 +196,7 @@ discharge_ratios <- full_join(monthly_ld_flow, annual_ld_flow,
 
 
 if (plot) {
-  discahrge_ratios |> 
+  discharge_ratios |> 
     # mutate(month = ((month + 8) %% 12) + 1) |> # convert back to the actual month
     ggplot(aes(x=month, y=mean_ratio)) +
     geom_col() +
@@ -395,7 +394,6 @@ if (plot) {
 
 # Apply scalings to  SAGIS annual loadings 
 sagis_loads <- read_csv("data/FW_ Request for information - Ref_ EIR2026_11092GC/lake_loads.csv", show_col_types = F) |> 
-  mutate(value = ifelse(is.na(inlake_summary), mean_value, inlake_summary)) |> 
   filter(variable %in% c('Nitrate', 'Total_Phosphorus'))
 
 sagis_monthly <- sagis_loads |> 
