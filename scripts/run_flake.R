@@ -77,8 +77,8 @@ for (i in 1:length(lake_names_lookup)) {
               latitude, longitude,
               elev, lake_depth, lake_fetch,
               lake_lightext = 'clear',
-              calc_cc = F, make_met = T,
-              outputfile = file.path(lake_name, paste0(lake_name,'_clear.rslt')))
+              calc_cc = F, make_met = T, use_annual = F,
+              outputfile = file.path(lake_name, paste0(lake_name,'_clear_obs.rslt')))
 
   # run FLake
   run_FLake(lake_name)
@@ -115,8 +115,8 @@ for (i in 1:length(lake_names_lookup)) {
               latitude, longitude,
               elev, lake_depth, lake_fetch,
               lake_lightext = 'turbid',
-              calc_cc = F, make_met = F,
-              outputfile = file.path(lake_name, paste0(lake_name,'_turbid.rslt')))
+              calc_cc = F, make_met = F, use_annual = F,
+              outputfile = file.path(lake_name, paste0(lake_name,'_turbid_obs.rslt')))
   
   # run FLake
   run_FLake(lake_name)
