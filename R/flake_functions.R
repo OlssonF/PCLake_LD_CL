@@ -32,7 +32,7 @@
 # the Copernicus Climate Change Service, and the data providers in the ECA&D project (https://www.ecad.eu)"
 # "Cornes, R., G. van der Schrier, E.J.M. van den Besselaar, and P.D. Jones. 2018: An Ensemble Version of 
 # the E-OBS Temperature and Precipitation Datasets, J. Geophys. Res. Atmos., 123. doi:10.1029/2017JD028200"
-source('R/extract_data.R')
+source('R/met_funs.R')
 dir.create('data/FLake', showWarnings = F)
 
 #' Set up the FLake simulations for LD PCLake runs
@@ -50,6 +50,7 @@ dir.create('data/FLake', showWarnings = F)
 #' @param outputfile name of the flake results file
 #' @param make_met make new met files?
 #' @param met_type which met, ERA-Land of E-OBS
+#' @param use_annual 
 #'
 #' @returns
 #' @export
@@ -187,7 +188,7 @@ setup_FLake <- function(lake_name,
   ## Meteorology -------------
   lake_nml$METEO$meteofile     = file.path(lake_name, paste0(lake_name,'_met.dat'))
   lake_nml$METEO$outputfile    = outputfile
-  lake_nml$METEO$`z_wind_m(1)` = 2 # TRY THIS as 2
+  lake_nml$METEO$`z_wind_m(1)` = 10 # TRY THIS as 2
   
   ## lake specific parameters -----------
   lake_nml$LAKE_PARAMS$depth_w_lk  = lake_depth     # Lake depth [m]
