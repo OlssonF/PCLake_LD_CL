@@ -43,21 +43,21 @@ lakeIDs <- readxl::read_xlsx('data/SITE ID_MULTIPLE DATA SOURCES_LD LAKES.xlsx')
   filter(!is.na(LAKE_LakesTour2021_Zooplankton.csv),
          !str_detect(LAKE_LakesTour2021_Zooplankton.csv, 'Loughrigg'))   # remove Loughrigg because it's not right
 
-lake_names_lookup <- str_extract(lakeIDs$LAKE_LakesTour2021_Zooplankton.csv, "....")
-names(lake_names_lookup) <- lakeIDs$`WBID_Lake District_UKCEH Portal data_raw.xlsx`
+lake_names_lookup <- lakeIDs$`WBID_Lake District_UKCEH Portal data_raw.xlsx`
+names(lake_names_lookup) <- str_extract(lakeIDs$LAKE_LakesTour2021_Zooplankton.csv, "....")
 
-names(lake_names_lookup)[which(lake_names_lookup == 'Wind')] <- 29233 
+lake_names_lookup[which(names(lake_names_lookup) == 'Wind')] <- 29233 
 # the NBAS and SBAS have seperate WBIDs but the one from the lakes portal has the combined one which is different
 
 # Run with "clear" light extinction -------------
 for (i in 1:length(lake_names_lookup)) {
   # Select one lake at a time
-  lake_name <- lake_names_lookup[i]
-  message('Running ', lake_name)
+  wbid <- lake_names_lookup[i]
+  message('Running ', wbid, ' ', names(wbid))
 
   # Obtain the lake portal data (fetch, depth etc.)
   lakes_portal_subset <- lakes_portal_df |>
-    filter(str_detect(NAME, lake_name))
+    filter(WBID == wbid)
 
   latitude <- lakes_portal_subset |>
     select(WBLAT) |> pull()
@@ -73,15 +73,15 @@ for (i in 1:length(lake_names_lookup)) {
   lake_depth <- lakes_portal_subset$MNDP # mean depth
 
   # Set up the drivers and nml files
-  setup_FLake(lake_name,
+  setup_FLake(wbid,
               latitude, longitude,
               elev, lake_depth, lake_fetch,
               lake_lightext = 'clear',
               calc_cc = F, make_met = T, use_annual = F,
-              outputfile = file.path(lake_name, paste0(lake_name,'_clear_obs.rslt')))
+              outputfile = file.path(wbid, paste0(wbid,'_clear.rslt')))
 
   # run FLake
-  run_FLake(lake_name)
+  run_FLake(wbid)
 
 }
 
@@ -90,12 +90,12 @@ for (i in 1:length(lake_names_lookup)) {
 # Run with "turbid" light extinction -------------
 for (i in 1:length(lake_names_lookup)) {
   # Select one lake at a time
-  lake_name <- lake_names_lookup[i]
-  message('Running ', lake_name)
+  wbid <- lake_names_lookup[i]
+  message('Running ', wbid, ' ', names(wbid))
   
   # Obtain the lake portal data (fetch, depth etc.)
-  lakes_portal_subset <- lakes_portal_df |> 
-    filter(str_detect(NAME, lake_name))
+  lakes_portal_subset <- lakes_portal_df |>
+    filter(WBID == wbid)
   
   latitude <- lakes_portal_subset |> 
     select(WBLAT) |> pull()
@@ -111,14 +111,14 @@ for (i in 1:length(lake_names_lookup)) {
   lake_depth <- lakes_portal_subset$MNDP # mean depth
   
   # Set up the drivers and nml files
-  setup_FLake(lake_name,
+  setup_FLake(wbid,
               latitude, longitude,
               elev, lake_depth, lake_fetch,
               lake_lightext = 'turbid',
               calc_cc = F, make_met = F, use_annual = F,
-              outputfile = file.path(lake_name, paste0(lake_name,'_turbid_obs.rslt')))
+              outputfile = file.path(wbid, paste0(wbid,'_turbid.rslt')))
   
   # run FLake
-  run_FLake(lake_name)
+  run_FLake(wbid)
   
 }
