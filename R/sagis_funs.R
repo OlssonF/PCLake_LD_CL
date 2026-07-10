@@ -60,7 +60,7 @@ extract_SAGIS <- function(variable = 'Total_Phosphorus',
     group_by(WBID, NAME) %>%
     summarise(#inlake_n   = sum(!is.na(get(portion))),
               inlake_summary = inlake_summary(get(portion)), .groups = 'drop') |> 
-    pivot_longer(inlake_summary, names_to = 'source', values_to = 'value') |> 
+    pivot_longer(inlake_summary, names_to = 'source', values_to = 'value_kg_day') |> 
     mutate(distance_m = 0)
   
   # ------------------------------------------------------------#
@@ -101,7 +101,7 @@ extract_SAGIS <- function(variable = 'Total_Phosphorus',
         WBID = wbid,
         NAME = lake_poly$NAME,
        # nearest_id = nearest_pt$OBJECTID,
-        value = nearest_pt[[portion]],
+        value_kg_day = nearest_pt[[portion]],
         distance_m = as.numeric(dist),
         source = "nearest_catchment"
       )
@@ -114,7 +114,7 @@ extract_SAGIS <- function(variable = 'Total_Phosphorus',
         WBID = wbid,
         NAME = lake_poly$NAME,
         #nearest_id = nearest_pt$OBJECTID,
-        value = nearest_pt[[portion]],
+        value_kg_day = nearest_pt[[portion]],
         distance_m = as.numeric(dist),
         source = "nearest_all"
       )
