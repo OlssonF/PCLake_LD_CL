@@ -7,31 +7,32 @@
 #--------------------------------------#
 
 # For each of the individual lakes that we have appropriate data for we need to run the 
-# physical lake model to derive an average annual cycle of water temperatures that can be given to
+# physical lake model to derive an annual cycle of water temperatures that can be given to
 # PCLake+.
 
 # Model code: http://flake.igb-berlin.de/site/download (accessed 23rd Feb 2026)
-# We will use FLake to derive the "perpetual year solution" based on a single year of driving data
 # FLake is run twice with two light extinction values ("clear" and "turbid")
 
-# A perpetual year solution represents the annual cycle of temperature and mixing in a given lake 
-# that corresponds to a given annual cycle of input meteorological quantities. 
-# Starting with arbitrary initial conditions, the year-long simulation is repeated, using one and 
-# the same annual cycle of forcing. The initial conditions for the next year-long run are specified
-# using the values of the lake-model at the end of the previous year-long run. 
-# After a few model years, a periodic "perpetual year" solution is obtained. 
-
-# A perpetual year solution obtained with FLake is useful to give an idea of the state of the lake if 
-# no data from in the lake are available (but the atmospheric forcing can be specified in a rational way).
+# The model is run for 10 years to obtain multiple years from which a more
+# average condition can be obtained
 
 # Uses the forcing data from E-OBS,v32.0 (or v30.0 for qq and fg), 0.1 degree grid
 # e.g. for air temperature the data are downloaded in two chunks from here
 # https://surfobs.climate.copernicus.eu/dataaccess/access_eobs.php
-
 # "We acknowledge the E-OBS dataset from the EU-FP6 project UERRA (https://www.uerra.eu) and 
 # the Copernicus Climate Change Service, and the data providers in the ECA&D project (https://www.ecad.eu)"
 # "Cornes, R., G. van der Schrier, E.J.M. van den Besselaar, and P.D. Jones. 2018: An Ensemble Version of 
 # the E-OBS Temperature and Precipitation Datasets, J. Geophys. Res. Atmos., 123. doi:10.1029/2017JD028200"
+
+# Or use forcing data from ERA5-Land reanalysis dataset, 0.1 degree grid
+# data obtained using the download_era5.py script from https://cds.climate.copernicus.eu/datasets/reanalysis-era5-land
+
+# Attribution:
+# Generated using or contains modified Copernicus Climate Change Service information <2019>. 
+# Neither the European Commission nor ECMWF is responsible for any use that may be made of the Copernicus information or data it contains.
+# Muñoz Sabater, J. (2019): ERA5-Land hourly data from 1950 to present. Copernicus Climate Change Service (C3S) Climate Data Store (CDS). 
+# DOI: 10.24381/cds.e2161bac (Accessed on 20-Mar-2026)
+
 library(tidyverse)
 source('R/flake_functions.R')
 
@@ -122,3 +123,86 @@ for (i in 1:length(lake_names_lookup)) {
   run_FLake(wbid)
   
 }
+
+
+#----------------------------------------------------------#
+
+# Calculate a mean run -------------------------------------
+flake_dir <- 'data/flake'
+
+flake_results <- list.files(flake_dir, pattern = '*.rslt', recursive = T, full.names = T)
+flake_nlms <- list.files(flake_dir, pattern = '*.nml', recursive = T, full.names = T)
+
+
+# Fit GAM model -------------------------------------------
+
+# Get some rough predictions of water temperature dynamics that can be used in PCLake
+
+for (i in 1:length(lake_IDs)) {
+  
+  lake_ID_use <- lake_IDs[i]  
+  flake_IDs <- flake_results[str_detect(toupper(flake_results), lake_ID_use)]
+  flake_nml <-  glmtools::read_nml(flake_nlms[str_detect(toupper(flake_nlms), lake_ID_use)])
+  
+  if (lake_ID_use == 'WIND') {
+    lake_ID_use <- 'SBAS'
+  }
+  
+  
+  ## read the FLake results ------------------
+  clear_df <- read_flake(flake_IDs[1]) |> 
+    mutate(doy = yday(as_date(time)),
+           year = year(as_date(time)))|> 
+    # slice_tail(n = 365) |> 
+    mutate(time = row_number())
+  
+  turbid_df <- read_flake(flake_IDs[2]) |> 
+    mutate(doy = yday(as_date(time)),
+           year = year(as_date(time)))|> 
+    # slice_tail(n = 365) |> 
+    mutate(time = row_number())
+  
+  #----------------------------------------#
+  
+  ## Calculate the mean of the two light extinction runs
+  mean_df <- as.data.frame(Map(function(x, y) {(x + y) / 2}, clear_df, turbid_df))
+  
+  #-------------------------------------------------------#
+  # ----------extract temps for PCLake --------------------
+  #-------------------------------------------------------#
+  
+  # extract a typical seasonal pattern by fitting a GAM model 
+  # Uses a cyclic basis function, smoother with DOY
+  # fits the data on the mean_df (mean of the clear and turbid predictions)
+  
+  # Fit GAM with cyclic cubic spline
+  gam_model_Ts <- gam(Ts ~ s(doy, bs = "cc"), data = mean_df)
+  gam_model_Tb <- gam(Tb ~ s(doy, bs = "cc"), data = mean_df)
+  
+  # Create a sequence of DOY values to predict for
+  newdata <- data.frame(doy = 1:365)
+  
+  # Extract fitted values for each DOY
+  fitted_vals_Ts <- predict(gam_model_Ts, newdata = newdata)
+  fitted_vals_Tb <- predict(gam_model_Tb, newdata = newdata)
+  
+  # Combine DOY and fitted values
+  result <- data.frame(doy = newdata$doy,
+                       Ts = round(fitted_vals_Ts, digits = 2),
+                       Tb = round(fitted_vals_Tb, digits = 2))
+  
+  p_results <- ggplot(result, aes(x=doy)) + 
+    geom_line(aes(y = Ts, colour = 'surface'))  + 
+    geom_line(aes(y = Tb, colour = 'bottom'))
+  
+  ggsave(p_results ,filename = file.path(flake_dir, 'plots', paste0(lake_IDs[i], '_predictions.png')),
+         width = 15, height = 10, units = 'cm')
+  
+  # Write to file for PCLake
+  write_csv(result, file = file.path(flake_dir, lake_ID_use, paste0(lake_ID_use,'_predictions.csv')))
+  
+}
+
+
+
+
