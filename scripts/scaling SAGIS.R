@@ -43,7 +43,8 @@ if (archive) {
 
 if (plot) {
   # plot this by getting the polygons again
-  ld_lakesportal <- readr::read_csv('data/Lake District_UKCEH Portal RT_data.csv') |> select(WBID)
+  ld_lakesportal <- readr::read_csv('data/Lake District_UKCEH Portal RT_data.csv') |> 
+    select(WBID)
   polys <- st_read("data/uklakes/data/uklakes_v3_6_poly.gpkg") |> 
     filter(WBID %in% ld_lakesportal$WBID) # filter to just the lake district lakes
   
@@ -55,7 +56,7 @@ if (plot) {
     polys_summary |> 
       filter(variable  == nutrients[1]) |> 
       ggplot() +
-      geom_sf(aes(fill = value), colour = NA) +
+      geom_sf(aes(fill = value_kg_day), colour = NA) +
       scale_fill_viridis_c(option = "plasma", na.value = "grey") +
       theme_minimal() +
       labs(title = nutrients[1], 
@@ -64,7 +65,7 @@ if (plot) {
     polys_summary |> 
       filter(variable  == nutrients[2]) |> 
       ggplot() +
-      geom_sf(aes(fill = value), colour = NA) +
+      geom_sf(aes(fill = value_kg_day), colour = NA) +
       scale_fill_viridis_c(option = "viridis", na.value = "grey") +
       theme_minimal() +
       labs(title = nutrients[2],
@@ -73,7 +74,7 @@ if (plot) {
     polys_summary |> 
       filter(variable  == nutrients[3]) |> 
       ggplot() +
-      geom_sf(aes(fill = value), colour = NA) +
+      geom_sf(aes(fill = value_kg_day), colour = NA) +
       scale_fill_viridis_c(option = "mako", na.value = "grey") +
       theme_minimal() +
       labs(title = nutrients[3], 
@@ -82,24 +83,24 @@ if (plot) {
     polys_summary |> 
       filter(variable  == nutrients[4]) |> 
       ggplot() +
-      geom_sf(aes(fill = value), colour = NA) +
+      geom_sf(aes(fill = value_kg_day), colour = NA) +
       scale_fill_viridis_c(option = "rocket", na.value = "grey") +
       theme_minimal() +
       labs(title = nutrients[4], 
-           fill = "Mean loading per lake")
+           fill = "Mean loading per lake per day")
   )
   
   
   polys_summary |> 
     ggplot() +
-    geom_histogram(aes(x = value),) +
+    geom_histogram(aes(x = value_kg_day),) +
     facet_wrap(~variable, scales = 'free') +
     theme_bw()
   
   
   polys_summary |> 
     ggplot() +
-    geom_point(aes(x = POLY_AREA_HA, y = value),) +
+    geom_point(aes(x = POLY_AREA_HA, y = value_kg_day),) +
     facet_wrap(~variable, scales = 'free') +
     theme_bw()
   
@@ -342,21 +343,21 @@ if (plot) {
 # -------------------------------------------------# 
 if (plot) {
   nut_ratios |> 
-  reframe(.by = c(month, variable),
-          av_scaling = mean(mean_ratio, na.rm = T)) |> 
-  ggplot(aes(x=month, y=av_scaling)) +
-  geom_col() + 
-  scale_x_continuous(labels = month.abb[seq(1,12,2)], 
-                     breaks = seq(1,12,2)) +
-  facet_wrap(~variable)
-
-discharge_ratios |> 
-  reframe(.by = month,
-          av_scaling = mean(mean_ratio, na.rm = T)) |> 
-  ggplot(aes(x=month, y=av_scaling)) +
-  geom_col() + 
-  scale_x_continuous(labels = month.abb[seq(1,12,2)], 
-                     breaks = seq(1,12,2))
+    reframe(.by = c(month, variable),
+            av_scaling = mean(mean_ratio, na.rm = T)) |> 
+    ggplot(aes(x=month, y=av_scaling)) +
+    geom_col() + 
+    scale_x_continuous(labels = month.abb[seq(1,12,2)], 
+                       breaks = seq(1,12,2)) +
+    facet_wrap(~variable)
+  
+  discharge_ratios |> 
+    reframe(.by = month,
+            av_scaling = mean(mean_ratio, na.rm = T)) |> 
+    ggplot(aes(x=month, y=av_scaling)) +
+    geom_col() + 
+    scale_x_continuous(labels = month.abb[seq(1,12,2)], 
+                       breaks = seq(1,12,2))
 }
 
 
@@ -379,11 +380,11 @@ combined_scaling <- full_join(av_scaling_nuts, av_scaling_discharge, by = "month
 
 if (plot) {
   combined_scaling |>  # the sum adds to 1
-  ggplot(aes(x=month, y = prop_scale)) +
-  geom_bar(stat = 'identity') +
-  facet_wrap(~variable) + 
-  scale_x_continuous(labels = month.abb[seq(1,12,2)], breaks = seq(1,12,2))
-
+    ggplot(aes(x=month, y = prop_scale)) +
+    geom_bar(stat = 'identity') +
+    facet_wrap(~variable) + 
+    scale_x_continuous(labels = month.abb[seq(1,12,2)], breaks = seq(1,12,2))
+  
 }
 
 ## ----------------------------------------------------#
@@ -393,36 +394,101 @@ if (plot) {
 ## ----------------------------------------------------#
 
 # Apply scalings to  SAGIS annual loadings 
-sagis_loads <- read_csv("data/FW_ Request for information - Ref_ EIR2026_11092GC/lake_loads.csv", show_col_types = F) |> 
-  filter(variable %in% c('Nitrate', 'Total_Phosphorus'))
+sagis_loads <- read.csv("data/FW_ Request for information - Ref_ EIR2026_11092GC/lake_loads.csv") |> 
+  filter(variable %in% c('Nitrate', 'Total_Phosphorus')) |> 
+  mutate(value_kg_year = value_kg_day * 365) # SAGIS data are in kg/day
 
 sagis_monthly <- sagis_loads |> 
   mutate(variable = ifelse(variable == 'Nitrate', 'Nitrate-N', 
                            ifelse(variable == 'Total_Phosphorus', 'Phosphorus-P', NA))) |> 
   full_join(combined_scaling, by = join_by(variable),
             relationship = 'many-to-many') |> 
-  mutate(monthly_apportion = value * prop_scale) 
+  mutate(value_kg_month = value_kg_year * prop_scale) 
 
 if (plot) {
   sagis_monthly |> 
-  ggplot(aes(x = month, y = monthly_apportion, group = NAME)) +
-  geom_point() +
-  facet_wrap(~variable, scales = 'free')  + 
-  scale_x_continuous(labels = month.abb[seq(1,12,2)], 
-                     breaks = seq(1,12,2)) +
-  theme_bw()
-
-
-sagis_monthly |> 
-  filter(NAME %in% c("Ullswater", 'Windermere', 'Bowscale Tarn', 'Grasmere')) |> 
-  ggplot(aes(x = NAME, y = monthly_apportion, fill = as_factor(month))) + 
-  geom_bar(position="stack", stat="identity") +
-  facet_wrap(~variable, scales = 'free') +
-  theme_bw() +
-  geom_point(aes(y = value))
-
+    ggplot(aes(x = month, y = value_kg_month, group = WBID)) +
+    geom_point() +
+    facet_wrap(~variable, scales = 'free')  + 
+    scale_x_continuous(labels = month.abb[seq(1,12,2)], 
+                       breaks = seq(1,12,2)) +
+    theme_bw()
+  
+  
+  sagis_monthly |> 
+    filter(NAME %in% c("Ullswater", 'Windermere', 'Bowscale Tarn', 'Grasmere')) |> 
+    ggplot(aes(x = NAME, y = value_kg_month, fill = as_factor(month))) + 
+    geom_bar(position="stack", stat="identity") +
+    facet_wrap(~variable, scales = 'free') +
+    theme_bw() +
+    geom_point(aes(y = value_kg_year))
+  
 }
 
 if (archive) {
   sagis_monthly |> write_csv("data/FW_ Request for information - Ref_ EIR2026_11092GC/lake_loads_monthly.csv")
 }
+
+# convert from the month loads to a load per day, equal in the month
+year_dates <- distinct(sagis_monthly, WBID, NAME, variable) |> 
+  group_by(WBID, NAME, variable) |> 
+  reframe(Date = as_date(seq.Date(as_date('2026-01-01'), as_date('2026-12-31'), 'day')))
+
+
+sagis_daily <- sagis_monthly |> 
+  mutate(Date = dmy(paste0('01-',month, '-2026')),
+         n_days = days_in_month(Date),
+         value_kg_day = value_kg_month/n_days) |> 
+  select(Date, WBID, NAME, value_kg_day, variable) |> 
+  full_join(year_dates, by = join_by(Date, WBID, NAME, variable)) |> 
+  group_by(WBID, NAME, variable) |> 
+  arrange(Date) |> 
+  mutate(value_kg_day = imputeTS::na_locf(value_kg_day, na_remaining = 'rev')) |> 
+  ungroup()|> 
+  mutate(day = yday(Date))
+
+
+# also try generating one with a smooth curve, interpolate to mid-month
+sagis_daily_smoothed <- sagis_monthly |> 
+  mutate(Date = dmy(paste0('01-',month, '-2026')),
+         n_days = days_in_month(Date),
+         value_kg_day = value_kg_month/n_days) |> 
+  select(Date, WBID, NAME, value_kg_day, variable) |> 
+  full_join(year_dates, by = join_by(Date, WBID, NAME, variable)) |> 
+  group_by(WBID, NAME, variable) |> 
+  arrange(Date) |> 
+  mutate(value_kg_day = imputeTS::na_interpolation(value_kg_day, option = 'linear', na.rm = F)) |> 
+  ungroup() |> 
+  mutate(day = yday(Date))
+
+
+
+if (plot) {
+  sagis_daily |> 
+    filter(NAME %in% c('Bowscale Tarn', 'Crummock Water', 'Bassenthwaite Lake')) |> 
+    ggplot(aes(x=Date, y = value_kg_day)) +
+    geom_line() +
+    scale_x_datetime() +
+    facet_grid(WBID+NAME~variable, scales = 'free')
+}
+
+sagis_daily |> 
+  reframe(daily_av = mean(value_kg_day),
+          .by = c('variable', 'NAME', 'WBID')) |> 
+  mutate(variable = ifelse(variable == 'Nitrate-N', 'Nitrate',
+                           ifelse(variable == 'Phosphorus-P', 
+                                  'Total_phosphorus', NA))) |> 
+  full_join(sagis_nuts) |> 
+  mutate(test = ifelse((daily_av - value_kg_day)/value_kg_day < 0.01, T, F))|> 
+  filter(test == F) 
+# check that the downscaled daily average matches the daily average from SAGIS - this should be zero!
+
+if (archive) {
+  sagis_daily |> 
+    select(day, variable, NAME, WBID, value_kg_day) |> 
+    mutate(variable = ifelse(variable == 'Nitrate-N', 'nitrate',
+                             ifelse(variable == 'Phosphorus-P', 
+                                    'phosphorus', NA))) |> 
+    write_csv("data/FW_ Request for information - Ref_ EIR2026_11092GC/lake_loads_daily.csv")
+}
+ 
