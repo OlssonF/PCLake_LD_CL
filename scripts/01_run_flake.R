@@ -34,6 +34,7 @@
 # DOI: 10.24381/cds.e2161bac (Accessed on 20-Mar-2026)
 
 library(tidyverse)
+library(mgcv)
 source('R/flake_functions.R')
 
 # the lakes portal data has all the basic info we need
@@ -131,23 +132,25 @@ for (i in 1:length(lake_names_lookup)) {
 flake_dir <- 'data/flake'
 
 flake_results <- list.files(flake_dir, pattern = '*.rslt', recursive = T, full.names = T)
-flake_nlms <- list.files(flake_dir, pattern = '*.nml', recursive = T, full.names = T)
+flake_nmls <- list.files(flake_dir, pattern = '*.nml', recursive = T, full.names = T)
 
+WIND_WBID <- 29233
 
 # Fit GAM model -------------------------------------------
 
 # Get some rough predictions of water temperature dynamics that can be used in PCLake
 
-for (i in 1:length(lake_IDs)) {
+for (i in 1:length(lakeIDs)) {
   
-  lake_ID_use <- lake_IDs[i]  
-  flake_IDs <- flake_results[str_detect(toupper(flake_results), lake_ID_use)]
-  flake_nml <-  glmtools::read_nml(flake_nlms[str_detect(toupper(flake_nlms), lake_ID_use)])
+  lake_ID_use <- lakeIDs$`WBID_Lake District_UKCEH Portal data_raw.xlsx`[i]  
+  flake_IDs <- flake_results[str_detect(flake_results, as.character(lake_ID_use))]
+  flake_nml <-  glmtools::read_nml(flake_nmls[str_detect(flake_nmls, as.character(lake_ID_use))])
   
-  if (lake_ID_use == 'WIND') {
-    lake_ID_use <- 'SBAS'
+  if (lake_ID_use == WIND_WBID) {
+    lake_ID_use <- 47008
   }
   
+  lake_name_use <- lakeIDs$LAKE_Lakes_Tour_Chem_TeOx.xlsx[which(lakeIDs$`WBID_Lake District_UKCEH Portal data_raw.xlsx` == lake_ID_use)]
   
   ## read the FLake results ------------------
   clear_df <- read_flake(flake_IDs[1]) |> 
@@ -193,9 +196,12 @@ for (i in 1:length(lake_IDs)) {
   
   p_results <- ggplot(result, aes(x=doy)) + 
     geom_line(aes(y = Ts, colour = 'surface'))  + 
-    geom_line(aes(y = Tb, colour = 'bottom'))
+    geom_line(aes(y = Tb, colour = 'bottom')) +
+    coord_cartesian(ylim = c(0,30)) +
+    theme_bw() +
+    labs(title = "Fitted GAMs", subtitle = lake_ID_use)
   
-  ggsave(p_results ,filename = file.path(flake_dir, 'plots', paste0(lake_IDs[i], '_predictions.png')),
+  ggsave(p_results ,filename = file.path(flake_dir, 'plots', paste0(lake_name_use, '_predictions.png')),
          width = 15, height = 10, units = 'cm')
   
   # Write to file for PCLake

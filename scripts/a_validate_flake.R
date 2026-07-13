@@ -1,6 +1,5 @@
 library(tidyverse)
 library(ggpubr)
-library(mgcv)
 
 source('R/flake_functions.R')
 
