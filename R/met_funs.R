@@ -89,24 +89,50 @@ get_era5_ts <- function(var_name, latitude, longitude, daily = T) {
     stop('var_name is not in the era5 files (u10, v10, d2m, t2m, ssrd')
   }
   
-  
+  missing <- 0 # starts with no data and then checks each time
   lat_round <- formatC(floor(latitude / 0.1) * 0.1, format = "f", digits = 2)
   long_round <- formatC(floor(longitude / 0.1) * 0.1, format = "f", digits = 2)
+  
+  # Uses the while loop because some points are in grid cells with no data, near the coast
+  while (missing == 0) {
 
-  nc_path <- paste(lat_round, long_round, sep ="_")
-  nc_file <- list.files(file.path("data", "era5_grid", nc_path, "nc"),
-                        full.names = T)[str_detect(list.files(file.path("data", "era5_grid", nc_path, "nc")), file_var)]
+    nc_path <- paste(lat_round, long_round, sep ="_")
+    
+    nc_file <- list.files(file.path("data", "era5_grid", nc_path, "nc"),
+                          full.names = T)[str_detect(list.files(file.path("data", "era5_grid", nc_path, "nc")), file_var)]
+    
+    message("Looking for ERA5-Land at ", nc_path)
+    
+    if (length(nc_file) == 0) {
+      stop('No downloaded ERA5-Land data is available for this location. Check that the lat-lon are right.')
+    }
+    
+    # Open the .nc file
+    our_nc_data <- nc_open(nc_file)
+    time <- ncvar_get(our_nc_data, "valid_time") 
+    
+    nt <- dim(time) # how long is the time series
+    
+    var_df <- data.frame(datetime = as_datetime(time * 3600, tz = 'UTC')) |> 
+      # it's in hours since 1970, convert to secs |>  
+      ## make sure this is right! our_nc_data$dim$valid_time$units
+      mutate("{var_name}" := ncvar_get(our_nc_data, varid = var_name))
+    
+    # checks if this grid has data
+    missing <- var_df |> 
+      filter(!if_any(var_name, is.na)) |> 
+      nrow()
+    
+    if (missing == 0) {
+      message('That grid square has no data, using adjacent')
+      
+    }
+    
+    # reset the lat-lon to look for data
+    long_round <- formatC(as.numeric(long_round) + 0.1, 
+                          format = "f", digits = 2) # move to the E by 0.1 and check again
+  }
   
-  # Open the .nc file
-  our_nc_data <- nc_open(nc_file)
-  time <- ncvar_get(our_nc_data, "valid_time") 
-  
-  nt <- dim(time) # how long is the time series
-  
-  var_df <- data.frame(datetime = as_datetime(time * 3600, tz = 'UTC')) |> 
-                                          # it's in hours since 1970, convert to secs |>  
-    ## make sure this is right! our_nc_data$dim$valid_time$units
-    mutate("{var_name}" := ncvar_get(our_nc_data, varid = var_name))
   
   if (var_name == 'ssrd') {
     # deaccumulate radiation values
