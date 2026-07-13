@@ -149,17 +149,13 @@ WIND_WBID <- 29233
 
 # Get some rough predictions of water temperature dynamics that can be used in PCLake
 
-for (i in 1:length(lakeIDs)) {
+for (i in 1:length(lake_names_lookup)) {
   
-  lake_ID_use <- lakeIDs$`WBID_Lake District_UKCEH Portal data_raw.xlsx`[i]  
+  lake_ID_use <- lake_names_lookup[i]
   flake_IDs <- flake_results[str_detect(flake_results, as.character(lake_ID_use))]
   flake_nml <-  glmtools::read_nml(flake_nmls[str_detect(flake_nmls, as.character(lake_ID_use))])
   
-  if (lake_ID_use == WIND_WBID) {
-    lake_ID_use <- 47008
-  }
-  
-  lake_name_use <- lakeIDs$LAKE_Lakes_Tour_Chem_TeOx.xlsx[which(lakeIDs$`WBID_Lake District_UKCEH Portal data_raw.xlsx` == lake_ID_use)]
+  lake_name_use <- names(lake_names_lookup)[i]
   
   ## read the FLake results ------------------
   clear_df <- read_flake(flake_IDs[1]) |> 
@@ -208,9 +204,9 @@ for (i in 1:length(lakeIDs)) {
     geom_line(aes(y = Tb, colour = 'bottom')) +
     coord_cartesian(ylim = c(0,30)) +
     theme_bw() +
-    labs(title = "Fitted GAMs", subtitle = lake_ID_use)
+    labs(title = "Fitted GAMs", subtitle = paste(lake_ID_use, lake_name_use))
   
-  ggsave(p_results ,filename = file.path(flake_dir, 'plots', paste0(lake_name_use, '_predictions.png')),
+  ggsave(p_results ,filename = file.path(flake_dir, 'plots', paste0(lake_ID_use, '_predictions.png')),
          width = 15, height = 10, units = 'cm')
   
   # Write to file for PCLake
