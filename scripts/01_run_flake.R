@@ -37,19 +37,28 @@ library(tidyverse)
 library(mgcv)
 source('R/flake_functions.R')
 
+subset <- F # run all lakes or not
 # the lakes portal data has all the basic info we need
-lakes_portal_df <- read_csv('data/lakes4PCLake.csv')
+lakes_portal_df <- read_csv('data/lakes4PCLake.csv', show_col_types = F)
 
-# LakeIDs to loop through
-lakeIDs <- readxl::read_xlsx('data/SITE ID_MULTIPLE DATA SOURCES_LD LAKES.xlsx') |> 
-  filter(!is.na(LAKE_LakesTour2021_Zooplankton.csv),
-         !str_detect(LAKE_LakesTour2021_Zooplankton.csv, 'Loughrigg'))   # remove Loughrigg because it's not right
+if (subset == T) {
+  # LakeIDs to loop through
+  lakeIDs <- readxl::read_xlsx('data/SITE ID_MULTIPLE DATA SOURCES_LD LAKES.xlsx') |> 
+    filter(!is.na(LAKE_LakesTour2021_Zooplankton.csv),
+           !str_detect(LAKE_LakesTour2021_Zooplankton.csv, 'Loughrigg'))   # remove Loughrigg because it's not right
+  
+  lake_names_lookup <- lakeIDs$`WBID_Lake District_UKCEH Portal data_raw.xlsx`
+  names(lake_names_lookup) <- str_extract(lakeIDs$LAKE_LakesTour2021_Zooplankton.csv, "....")
+  
+  lake_names_lookup[which(names(lake_names_lookup) == 'Wind')] <- 29233 
+  # the NBAS and SBAS have seperate WBIDs but the one from the lakes portal has the combined one which is different
+} else {
+  
+  lake_names_lookup <- lakes_portal_df$WBID
+  names(lake_names_lookup) <- lakes_portal_df$NAME
+  
+}
 
-lake_names_lookup <- lakeIDs$`WBID_Lake District_UKCEH Portal data_raw.xlsx`
-names(lake_names_lookup) <- str_extract(lakeIDs$LAKE_LakesTour2021_Zooplankton.csv, "....")
-
-lake_names_lookup[which(names(lake_names_lookup) == 'Wind')] <- 29233 
-# the NBAS and SBAS have seperate WBIDs but the one from the lakes portal has the combined one which is different
 
 # Run with "clear" light extinction -------------
 for (i in 1:length(lake_names_lookup)) {
