@@ -9,7 +9,7 @@ import zipfile
 
 # Starting point of the grid
 lat_start = 54.2
-lon_start = -3.4
+lon_start = -3.5
 
 # Grid size: 1 degrees × 1 degrees
 grid_size = 1
@@ -20,7 +20,7 @@ step = 0.1
 # Variables to download
 variables = [
     "2m_dewpoint_temperature",
-	"2m_temperature",
+    "2m_temperature",
     "surface_solar_radiation_downwards",
     "10m_u_component_of_wind",
     "10m_v_component_of_wind"
@@ -40,7 +40,7 @@ lons = np.arange(lon_start, lon_start + grid_size, step)
 # -----------------------------
 # CDS API CLIENT
 # -----------------------------
-c = cdsapi.Client()
+client = cdsapi.Client()
 
 # -----------------------------
 # LOOP THROUGH GRID POINTS
@@ -55,33 +55,33 @@ for lat in lats:
 
         # Output ZIP file
         zip_path = f"{point_folder}/download.zip"
-
+        extract_folder = f"{point_folder}/nc/"
+        os.makedirs(extract_folder, exist_ok=True)
+        
+        # --- SKIP IF DATA ALREADY DOWNLOADED ---
+        nc_files = [f for f in os.listdir(extract_folder) if f.endswith(".nc")]
+        if len(nc_files) > 0:
+            print(f"Skipping {lat:.2f}, {lon:.2f} — already downloaded.")
+            continue
+        
         print(f"Downloading ERA5-Land for point {lat:.2f}, {lon:.2f}")
+
 
         dataset = "reanalysis-era5-land-timeseries"
         request = {
-            "variable": [
-            "2m_dewpoint_temperature",
-            "2m_temperature",
-            "surface_solar_radiation_downwards",
-            "10m_u_component_of_wind",
-            "10m_v_component_of_wind"
-            ],
+            "variable": variables,
             "location": {"longitude": lon, "latitude": lat},
             "date": ["1995-01-01/2026-03-13"],
             "data_format": "netcdf"
         }
 
-        client = cdsapi.Client()
         client.retrieve(dataset, request).download(zip_path)
 
 
         # -----------------------------
         # UNZIP AND ORGANIZE FILES
         # -----------------------------
-        extract_folder = f"{point_folder}/nc/"
-        os.makedirs(extract_folder, exist_ok=True)
-
+        
         with zipfile.ZipFile(zip_path, "r") as z:
             z.extractall(extract_folder)
 
