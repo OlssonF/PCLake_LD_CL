@@ -8,12 +8,42 @@ flake_dir <- 'data/flake'
 flake_results <- list.files(flake_dir, pattern = '*.rslt', recursive = T, full.names = T)
 flake_nlms <- list.files(flake_dir, pattern = '*.nml', recursive = T, full.names = T)
 
+subset <- T # run all lakes or not
+
+# the lakes portal data has all the basic info we need
+lakes_portal_df <- read_csv('data/lakes4PCLake.csv', show_col_types = F)
+
+if (subset == T) {
+  # LakeIDs to loop through
+  lakeIDs <- readxl::read_xlsx('data/SITE ID_MULTIPLE DATA SOURCES_LD LAKES.xlsx') |> 
+    filter(!is.na(LAKE_LakesTour2021_Zooplankton.csv),
+           !str_detect(LAKE_LakesTour2021_Zooplankton.csv, 'Loughrigg'))   # remove Loughrigg because it's not right
+  
+  lake_names_lookup <- lakeIDs$`WBID_Lake District_UKCEH Portal data_raw.xlsx`
+  names(lake_names_lookup) <- str_extract(lakeIDs$LAKE_LakesTour2021_Zooplankton.csv, "....")
+  
+  lake_names_lookup[which(names(lake_names_lookup) == 'Wind')] <- 29233 
+  # the NBAS and SBAS have seperate WBIDs but the one from the lakes portal has the combined one which is different
+  
+  flake_results <- flake_results[str_detect(string = flake_results, paste(lake_names_lookup, collapse = "|"))]
+  flake_nmls <- flake_nlms[str_detect(string = flake_nlms, paste(lake_names_lookup, collapse = "|"))]
+  
+} else {
+  
+  lake_names_lookup <- lakes_portal_df$WBID
+  names(lake_names_lookup) <- lakes_portal_df$NAME
+  
+
+}
+
+
 # plotting function
 all_flake <- flake_results |> 
   purrr::map(~plot_flake(.x,
                          var = 'Ts',
                          ylim = c(0,20),
                          xlim = NULL))
+
 names(all_flake) <- str_remove(basename(flake_results), '.rslt')
 
 ggarrange(plotlist = all_flake[1:(length(flake_results)/2)], 
@@ -28,22 +58,18 @@ val_data <- read_csv('data/Validation/temperature and oxygen.csv') |>
 WIND <- c(47007, 47008) # these are the WBIDs for the NBAS and SBAS
 WIND_WBID <- 29233
 
-match_IDs <- readxl::read_xlsx('data/SITE ID_MULTIPLE DATA SOURCES_LD LAKES.xlsx') 
-
-lake_IDs <- unique(str_extract(basename(flake_results), "(?<=).*?(?=_)"))
-
 # Plots for validation -------------------------
-for (i in 1:length(lake_IDs)) {
+for (i in 1:length(lake_names_lookup)) {
   
-  lake_ID_use <- lake_IDs[i]  
-  flake_IDs <- flake_results[str_detect(toupper(flake_results), lake_ID_use)]
-  flake_nml <-  glmtools::read_nml(flake_nlms[str_detect(toupper(flake_nlms), lake_ID_use)])
+  lake_ID_use <- lake_names_lookup[i]
+  flake_IDs <- flake_results[str_detect(flake_results, as.character(lake_ID_use))]
+  flake_nml <-  glmtools::read_nml(flake_nmls[str_detect(flake_nmls, as.character(lake_ID_use))])
   
   if (lake_ID_use == WIND_WBID) {
     lake_ID_use <- 47008 # change to the ID for the SBAS for validation data
   }
   
-  lake_name_use <- match_IDs$LAKE_Lakes_Tour_Chem_TeOx.xlsx[which(match_IDs$`WBID_Lake District_UKCEH Portal data_raw.xlsx` == lake_ID_use)]
+  lake_name_use <- names(lake_names_lookup)[i]
   
   # read the FLake results
   clear_df <- read_flake(flake_IDs[1]) |> 
