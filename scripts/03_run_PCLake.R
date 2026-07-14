@@ -9,6 +9,7 @@ library(tidyverse)
 library(here)
 library(doSNOW)
 library(parallelly)
+source('R/met_funs.R')
 
 ## Order of actions to run PCLake in R
 ##   1. Making folder structure for running the model
@@ -23,6 +24,7 @@ library(parallelly)
 
 ## Global settings
 options(scipen = 999) ## no scientific notation
+subset <- T
 
 ## 1. Directory settings ---------------------------------------------------------
 ## using relative paths in which the project and script is saved in the work_cases
@@ -33,7 +35,7 @@ dirHome <- str_split(project_location,  "(?=PCModel1350)", simplify = T)[1,1]	# 
 dirShell <- str_split(project_location,  "(?<=PCShell)", simplify = T)[1,1]	#  PCShell folder path
 dirCpp_root <- list.dirs(dirHome)[which(str_detect(list.dirs(dirHome),"3.01/PCLake_plus"))] # location of C++ code
 nameWorkCase <- tail(str_split_1(project_location, "/"), n = 1) # workcase name
-fileDATM <- list.files(list.dirs(dirHome)[which(str_detect(list.dirs(dirHome), "PCLake\\+/6.13.16"))], "PL613162PLUS_bifurcation_testing.xls", full.names = T)
+fileDATM <- list.files(list.dirs(dirHome)[which(str_detect(list.dirs(dirHome), "PCLake\\+/6.13.16"))], "PL613162PLUS_LakeDistrict.xls", full.names = T)
 dirSave <- dirShell
 
 ## load external functions from the scripts folder
@@ -45,7 +47,6 @@ source(file.path(dirShell, "work_cases", "PCLake_pathway_optimisation", "scripts
 lDATM_SETTINGS <- PCModelReadDATMFile_PCLakePlus(fileXLS  = fileDATM,folderTXT = 'input',
                                                  locDATM = "excel",
                                                  locFORCING = "txt")
-
 ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ## 4. Optional: adjust model settings------------------------------------
 ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -59,44 +60,32 @@ lDATM_SETTINGS <- PCModelReadDATMFile_PCLakePlus(fileXLS  = fileDATM,folderTXT =
 # Required lake specific parameters ------------------
 # Lake specific parameters that we need:
 # - mean depth (MNDP)
-# - mixed depth - or assign a sine curve
-# - water temperatures - use default values
-# - fetch
+# - water temperatures - from FLake
+# - fetch 
 # - light ts
 # - wind ts
 
-
-# lakes_portal <- readxl::read_xlsx('data/Lake District_UKCEH Portal data_raw.xlsx', sheet = 'Combined')
-# lakes_portal_rt <-  read_csv('data/Lake District_UKCEH Portal RT_data.csv') |> # this is extracted from the Lake District_UKCEH Portal data_raw.xlsx sheet RT Data
-#   rename(DISCHARGE_M3Y = `DISCHARGEm3/y`)
-# 
-# # need to have all of these
-# lakes_portal |>
-#   full_join(lakes_portal_rt, by = 'WBID') |>
-#   filter(!is.na(MNDP),
-#          !is.na(FETCH_KM),
-#          !is.na(DISCHARGE_M3Y)) |>
-#   write_csv('data/lakes4PCLake.csv')
-
-
 # the lakes portal data has all the basic info we need
-lakes_portal_df <- read_csv('data/lakes4PCLake.csv')
+lakes_portal_df <- read_csv('data/lakes4PCLake.csv', show_col_types = F)
 
-# LakeIDs to loop through
-lakeIDs <- read_xlsx('data/SITE ID_MULTIPLE DATA SOURCES_LD LAKES.xlsx') |> 
-  filter(!is.na(LAKE_LakesTour2021_Zooplankton.csv),
-         !str_detect(LAKE_LakesTour2021_Zooplankton.csv, 'Loughrigg'))   # remove Loughrigg because it's not right
 
-lake_names_lookup <- str_extract(lakeIDs$LAKE_LakesTour2021_Zooplankton.csv, "....")
-names(lake_names_lookup) <- lakeIDs$`WBID_Lake District_UKCEH Portal data_raw.xlsx`
-
-names(lake_names_lookup)[which(lake_names_lookup == 'Wind')] <- 29233 
-# the NBAS and SBAS have seperate WBIDs but the one from the lakes portal has the combined one which is different
-
-# use these functions:
-source('R/extract_data.R')
-
-spin_up <- 365 * 25 # 25 years
+if (subset == T) {
+  # LakeIDs to loop through
+  lakeIDs <- readxl::read_xlsx('data/SITE ID_MULTIPLE DATA SOURCES_LD LAKES.xlsx') |> 
+    filter(!is.na(LAKE_LakesTour2021_Zooplankton.csv),
+           !str_detect(LAKE_LakesTour2021_Zooplankton.csv, 'Loughrigg'))   # remove Loughrigg because it's not right
+  
+  lake_names_lookup <- lakeIDs$`WBID_Lake District_UKCEH Portal data_raw.xlsx`
+  names(lake_names_lookup) <- str_extract(lakeIDs$LAKE_LakesTour2021_Zooplankton.csv, "....")
+  
+  lake_names_lookup[which(names(lake_names_lookup) == 'Wind')] <- 29233 
+  # the NBAS and SBAS have seperate WBIDs but the one from the lakes portal has the combined one which is different
+} else {
+  
+  lake_names_lookup <- lakes_portal_df$WBID
+  names(lake_names_lookup) <- lakes_portal_df$NAME
+  
+}
 
 # report the validation states
 val_states <- c('oChlaEpi', 'oO2WEpi', 'oPTotWEpi', 'oNTotWEpi', 'aSecchiT')
@@ -122,118 +111,120 @@ PCModelCompileModelWorkCase(dirSHELL = dirShell,
                             nameWORKCASE = nameWorkCase)
 
 
+years_run <- lDATM_SETTINGS$run_settings['dReady', 'Set2']
 
-for (i in 1:1){#length(lake_names_lookup)) {
+setwd(project_location)
+
+
+for (i in 1:length(lake_names_lookup)) {
   
   # Select one lake at a time
-  lake_name <- lake_names_lookup[i]
+  lake_id <- lake_names_lookup[i]
+  lake_name <- names(lake_names_lookup[i])
   
   # Obtain the lake portal data (fetch, depth etc.)
-  lakes_portal_subset <- lakes_portal_df |> 
-    filter(str_detect(NAME, lake_name))
+  lakes_portal_use <- lakes_portal_df |> 
+    filter(WBID ==lake_id) 
+  #-------------------------------------------------------------#
+  # Forcing timeseries -----------------------------------------#
+  # ------------------------------------------------------------#
   
-  # Forcing timeseries ---------------------------------
- 
-  ## Example using Elterwater
-  latitude_use <- lakes_portal_subset |> 
+  #-----------------------------------------------------#
+  ## Extract and set WB specific parameters ---------------------
+  #-----------------------------------------------------#
+  latitude_use <- lakes_portal_use |> 
     select(WBLAT) |> pull()
   
-  longitude_use <- lakes_portal_subset |> 
+  longitude_use <- lakes_portal_use |> 
     select(WBLONG) |> pull()
   
-  ## E-OBS (met) ------------------------------------------
-  # extract the data from the E-OBS files
-  qq_files <- list.files('data/E-OBS', pattern = 'qq', full.names = T)
-  qq_ts <- map(qq_files, get_EOBS_ts, var_name = 'qq', latitude = latitude_use, longitude = longitude_use) |> 
-    list_rbind() |> 
-    filter(between(date, 
-                   as_date('1998-01-01'),
-                   as_date('2024-01-01')),
-           yday(date) != 366)|> # remove leap year days
-    mutate(qq = zoo::na.approx(qq),
-           qq = ifelse(qq < 1, 1, qq)) # cannot have NAs# remove leap year days
-  
-  fg_files <- list.files('data/E-OBS', pattern = 'fg', full.names = T)
-  fg_ts <- map(fg_files, get_EOBS_ts, var_name = 'fg', latitude = latitude_use, longitude = longitude_use) |> 
-    list_rbind()|> 
-    filter(between(date, 
-                   as_date('1998-01-01'),
-                   as_date('2024-01-01')),
-           yday(date) != 366) |> # remove leap year days
-  mutate(fg = zoo::na.approx(fg)) # cannot have NAs
-  
-
-   lDATM_SETTINGS$forcings$sSet2$mVWind$value <- fg_ts |> 
-    # repeat the first year
-    slice(rep(1:365, each = 24)) |> 
-    group_by(date) |> 
-    mutate(rep = row_number()) |> ungroup() |> 
-    arrange(rep, date) |> 
-    # combine with the original timeseries
-    bind_rows(fg_ts) |> 
-    mutate(dTime = row_number()-1,
-           dValue = as.numeric(fg)) |>
-    pull(dValue)
-
-    # write_delim(file = 'input/mVWind.txt', delim = '\t', eol = '\t-1\n', append = F)
-  
-  # data.frame('-1') |>
-  #   write_delim(file = 'input/mVWind.txt', delim = '\t', append = T)
-  
-  lDATM_SETTINGS$forcings$sSet2$mLOut$value <- qq_ts  |> 
-    # repeat the first year
-    slice(rep(1:365, each = 24)) |> 
-    group_by(date) |> 
-    mutate(rep = row_number()) |> ungroup() |> 
-    arrange(rep, date) |> 
-    # combine with the original timeseries
-    bind_rows(qq_ts) |> 
-    mutate(dTime = row_number()-1,
-           dValue = as.numeric(qq)) |> 
-    select(dTime, dValue) |>  
-    mutate(dValue = zoo::na.approx(dValue)) |> pull(dValue)
-    # write_delim(file = 'input/mLOut.txt', delim = '\t', eol = '\t-1\n', append = F)
-  
-  # data.frame('-1') |>
-  #   write_delim(file = 'input/mLOut.txt', append = T)
-  
-  ## SAGIS-SIMCAT (nutrient loading) -----------------------
-  nut_conc <- read_csv('data/SAGIS/data/InflowNutrientConcs_SAGIS.csv', show_col_types = F) |> 
-    filter(str_detect(NAME_short, lake_name)) |> 
-    group_by(Nutrient) |> 
-    summarise_if(is.numeric, mean)
-  
-  ### Calculate the loads -----------------------------------
-  # use the conc from SAGIS and the lakes port RT (as discharge)
-  nut_loads <- lakes_portal_subset |> 
-    select(WBID, 
-           RET_TIMEyrs,# residence time in years
-           WBSAREA, # area in Ha
-           VOL, # volume in m3
-           DISCHARGE_M3Y) |> 
-    full_join(nut_conc, by = join_by('WBID')) |> # combine with the nutrient data
-    mutate(DISCHARGE_M3D = DISCHARGE_M3Y / 365, 
-           AREA_M2 = WBSAREA * 10000,
-           LOAD_GD = UCLimMnCon * DISCHARGE_M3D,
-           AREALLOAD_GDM2 = LOAD_GD/AREA_M2)
-  
-  PLoad <- nut_loads |> filter(Nutrient == 'P') |> pull(AREALLOAD_GDM2) 
-  # ignore N for now and just scale with P
-  
-  # Lake specific parameters ------------------------------
+  # Set WB specific parameters -------------------------#
   change_sets <- which(colnames(lDATM_SETTINGS$params) %in% c('sSet2', 'sSet3'))
   #-----------------------------------------------------#
-  lDATM_SETTINGS$params[which(rownames(lDATM_SETTINGS$params) == 'cFetch'), change_sets] <- lakes_portal_subset$FETCH_KM * 1000 # fetch, convert from km to m - is this actually a good estimate
-  lDATM_SETTINGS$params[str_detect(rownames(lDATM_SETTINGS$params), 'cLAT'), change_sets] <- lakes_portal_subset$WBLAT # latitude
-  lDATM_SETTINGS$params[str_detect(rownames(lDATM_SETTINGS$params), 'cDepthWInit0'), change_sets] <- lakes_portal_subset$MNDP # mean depth
-  lDATM_SETTINGS$forcings$sSet2$mPLoadEpi$value <- PLoad
+  lDATM_SETTINGS$params[which(rownames(lDATM_SETTINGS$params) == 'cFetch'), change_sets] <- sqrt(lakes_portal_use$WBSAREA*10000) # convert from Ha->m2 (typical fetch)
+  lDATM_SETTINGS$params[str_detect(rownames(lDATM_SETTINGS$params), 'cLAT'), change_sets] <- latitude_use # latitude
+  lDATM_SETTINGS$params[str_detect(rownames(lDATM_SETTINGS$params), 'cDepthWInit0'), change_sets] <- lakes_portal_use$MNDP # mean depth
   
+  # -----------------------------------------------------#
+  ## SAGIS (nutrient loading) ---------------------
+  #------------------------------------------------------#
+  sagis_loads <- read_csv(file.path(project_location, 'data/FW_ Request for information - Ref_ EIR2026_11092GC/lake_loads_daily.csv'), show_col_types = F) |> 
+    filter(WBID == lake_id) |> 
+    full_join(select(lakes_portal_use, WBID, WBSAREA), by = join_by(WBID)) |> 
+    mutate(value_kg_m2_day = value_kg_day/(WBSAREA*10000), # convert from Ha to m2
+           value_g_m2_day = value_kg_m2_day * 1000) # convert from kg to g
+  
+  # Repeat nutrient Loads
+  loads_pclake <- sagis_loads |>  
+    select(variable, day, value_g_m2_day) |> 
+    reframe(.by = all_of(c('variable', 'day')),
+            value = rep(value_g_m2_day, years_run),
+            year = 1:years_run) |> 
+    arrange(variable, year, day) |> 
+    mutate(.by = variable, time = row_number())
+  
+  PLoad <- loads_pclake |> 
+    filter(variable == 'phosphorus')
+  
+  NLoad  <- loads_pclake |> 
+    filter(variable == 'nitrate')
+  
+  lDATM_SETTINGS$forcings$sSet2$mPLoadEpi$value <- loads_pclake$value[c(1:nrow(PLoad), nrow(PLoad))] 
+  lDATM_SETTINGS$forcings$sSet2$mNLoadEpi$value <- loads_pclake$value[c(1:nrow(NLoad), nrow(NLoad))] 
+  # FYI; repeat the last row, for some reason that I don't know the timeseries is longer in PCLake
+  
+  
+  # -----------------------------------------------------#
+  ## FLake (water temperatures) --------------------------
+  #------------------------------------------------------#
+  flake_temps <- read_csv(file.path(project_location, 'data', 'flake', lake_id, paste0(lake_id, '_predictions.csv')),
+                          show_col_types = F)
+  
+  # Repeat temperatures
+  flake_temps <- flake_temps |> 
+    reframe(.by = 'doy',
+            Ts = rep(Ts, years_run),
+            Tb = rep(Tb, years_run),
+            year = 1:years_run) |> 
+    arrange(year, doy) |> 
+    mutate(time = row_number())
+  
+  lDATM_SETTINGS$forcings$sSet2$mTempEpi$value <- flake_temps$Ts[c(1:nrow(flake_temps), nrow(flake_temps))] 
+  lDATM_SETTINGS$forcings$sSet2$mTempHyp$value <- flake_temps$Tb[c(1:nrow(flake_temps), nrow(flake_temps))] 
+  # FYI; repeat the last row, for some reason that I don't know the timeseries is longer in PCLake
+  
+  
+  # -----------------------------------------------------#
+  ## ERA5-Land observations ------------------------------
+  #------------------------------------------------------#
+  met_vars <- c('u10', 'v10', 'ssrd')
+  names(met_vars) <- c('u10', 'v10', 'sr')
+  
+  era5_met <- map(met_vars, get_era5_ts, 
+                  latitude = latitude_use, longitude = longitude_use) |> 
+    reduce(full_join, by = 'date') |>
+    filter(between(date, 
+                   as_date('2000-01-01'), # extract only 25 years
+                   as_date('2024-12-31'))) |>
+    mutate(day = day(date),
+           month = month(date)) |> 
+    filter(!(day==29 & month ==2)) |>     
+    #Need to remove the 29th February from all years
+    pivot_longer(cols = all_of(unname(met_vars))) |> 
+    reframe(.by = all_of(c('name', 'date')),
+            value = rep(value, 2), # two repeats of the 25 years
+            year = 1:2) |> 
+    pivot_wider(names_from = name, values_from = value) |> 
+    rename(!!!met_vars) |> 
+    mutate(time = row_number(), 
+           ws = sqrt(u10^2 + v10^2)) 
+   
+  
+  lDATM_SETTINGS$forcings$sSet2$mVWind$value <- era5_met$ws[c(1:nrow(era5_met), nrow(era5_met))] 
+  lDATM_SETTINGS$forcings$sSet2$mLOut$value <- era5_met$sr[c(1:nrow(era5_met), nrow(era5_met))] 
+  # FYI; repeat the last row, for some reason that I don't know the timeseries is longer in PCLake
   
   # Run PCLake+ --------------------------------------------------
-  setwd(here())
-  # readxl::read_xlsx('data/SITE ID_MULTIPLE DATA SOURCES_LD LAKES.xlsx') |> 
-  #   filter(!is.na(LAKE_Lakes_Tour_Chem_TeOx.xlsx)) |> 
-  #   glimpse() 
   
   ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   ## 7.  Initialize model  ------------------------------------------------
@@ -252,22 +243,11 @@ for (i in 1:1){#length(lake_names_lookup)) {
                            nameWORKCASE = nameWorkCase) 
   
   
-  # 
-  # run1 |>
-  #   select(any_of(c('time', val_states, diag_states))) |>
-  #   pivot_longer(cols = any_of(c(val_states, diag_states)),
-  #                names_to = 'variable', values_to = 'value') |>
-  #   ggplot(aes(x=time,y=value)) +
-  #   geom_line()+
-  #   facet_wrap(~variable, scales = 'free_y')
-  
   dir.create(file.path(project_location, 'output'), showWarnings = F)
   run1 |> 
-    mutate(time = time - spin_up) |> # remove spin up before saving 
-    filter(time > 0) |> 
     write_csv(file = file.path(project_location, 'output', 
-                             paste0('baseline_', lake_name, '.csv')),
-            progress = F)
+                               paste0('baseline_', lake_id, '.csv')),
+              progress = F)
   
-  message('Finished ', lake_name)
+  message('Finished ', lake_id, ' ', lake_name)
 }
