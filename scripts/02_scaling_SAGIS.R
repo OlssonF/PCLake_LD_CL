@@ -22,6 +22,8 @@ lat  <- 54.51
 long <- -3.16
 dist <- 30   # 30 km radius
 
+ld_lakesportal <- readr::read_csv('data/lakes4PCLake.csv') 
+
 # --------------------------------------------#
 # --------- 1. Extract SAGIS from GIS ------------
 # --------------------------------------------#
@@ -43,8 +45,7 @@ if (archive) {
 
 if (plot) {
   # plot this by getting the polygons again
-  ld_lakesportal <- readr::read_csv('data/Lake District_UKCEH Portal RT_data.csv') |> 
-    select(WBID)
+  
   polys <- st_read("data/uklakes/data/uklakes_v3_6_poly.gpkg") |> 
     filter(WBID %in% ld_lakesportal$WBID) # filter to just the lake district lakes
   
@@ -491,4 +492,3 @@ if (archive) {
                                     'phosphorus', NA))) |> 
     write_csv("data/FW_ Request for information - Ref_ EIR2026_11092GC/lake_loads_daily.csv")
 }
- 

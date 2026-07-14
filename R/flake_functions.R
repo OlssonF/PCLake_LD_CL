@@ -6,32 +6,6 @@
 # Created with R version 4.5.2 (2025-10-31 ucrt)
 #--------------------------------------#
 
-# For each of the individual lakes that we have appropriate data for we need to run the 
-# physical lake model to derive an average annual cycle of water temperatures that can be given to
-# PCLake+.
-
-# Model code: http://flake.igb-berlin.de/site/download (accessed 23rd Feb 2026)
-# We will use FLake to derive the "perpetual year solution" based on a single year of driving data
-# FLake is run twice with two light extinction values ("clear" and "turbid")
-
-# A perpetual year solution represents the annual cycle of temperature and mixing in a given lake 
-# that corresponds to a given annual cycle of input meteorological quantities. 
-# Starting with arbitrary initial conditions, the year-long simulation is repeated, using one and 
-# the same annual cycle of forcing. The initial conditions for the next year-long run are specified
-# using the values of the lake-model at the end of the previous year-long run. 
-# After a few model years, a periodic "perpetual year" solution is obtained. 
-
-# A perpetual year solution obtained with FLake is useful to give an idea of the state of the lake if 
-# no data from in the lake are available (but the atmospheric forcing can be specified in a rational way).
-
-# Uses the forcing data from E-OBS,v32.0 (or v30.0 for qq and fg), 0.1 degree grid
-# e.g. for air temperature the data are downloaded in two chunks from here
-# https://surfobs.climate.copernicus.eu/dataaccess/access_eobs.php
-
-# "We acknowledge the E-OBS dataset from the EU-FP6 project UERRA (https://www.uerra.eu) and 
-# the Copernicus Climate Change Service, and the data providers in the ECA&D project (https://www.ecad.eu)"
-# "Cornes, R., G. van der Schrier, E.J.M. van den Besselaar, and P.D. Jones. 2018: An Ensemble Version of 
-# the E-OBS Temperature and Precipitation Datasets, J. Geophys. Res. Atmos., 123. doi:10.1029/2017JD028200"
 source('R/met_funs.R')
 dir.create('data/FLake', showWarnings = F)
 
@@ -369,7 +343,7 @@ read_flake <- function(filename) {
 }
 
 
-plot_flake <- name <- function(filename, var = 'Ts', ylim, xlim) {
+plot_flake <- function(filename, var = 'Ts', ylim, xlim) {
   plot <- read_flake(filename) |> 
     ggplot(aes(x = time, y = get(var))) +
     geom_line() +
