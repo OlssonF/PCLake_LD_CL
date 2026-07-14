@@ -182,13 +182,13 @@ setup_FLake <- function(lake_name,
   
   # Generate nml file ----------------------------------
   lake_nml <- glmtools::read_nml('data/FLake/example.nml')
-  lake_nml$SIMULATION_PARAMS$del_time_lk <- 86400
-  lake_nml$SIMULATION_PARAMS$time_step_number <- 365*10
+  lake_nml$SIMULATION_PARAMS$del_time_lk <- 86400 # daily timstep (60*60*24)
+  lake_nml$SIMULATION_PARAMS$time_step_number <- 365*10 # 10 year simulation
   
   ## Meteorology -------------
   lake_nml$METEO$meteofile     = file.path(lake_name, paste0(lake_name,'_met.dat'))
   lake_nml$METEO$outputfile    = outputfile
-  lake_nml$METEO$`z_wind_m(1)` = 10 # TRY THIS as 2
+  lake_nml$METEO$`z_wind_m(1)` = 2 # TRY THIS as 2
   
   ## lake specific parameters -----------
   lake_nml$LAKE_PARAMS$depth_w_lk  = lake_depth     # Lake depth [m]
@@ -224,7 +224,7 @@ setup_FLake <- function(lake_name,
 #' @export
 #'
 #' @examples
-run_FLake <- function(lake_name, run_dir = 'data/FLake') {
+run_FLake <- function(lake_name, run_dir = 'data/flake') {
   start_wd <- getwd()
   setwd(run_dir)  
   system(paste0('./flake ./', lake_name, '/', lake_name, '.nml'))
