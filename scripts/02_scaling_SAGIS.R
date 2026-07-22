@@ -15,7 +15,9 @@ library(purrr)
 source('R/sagis_funs.R')
 
 # to save the data locally or not?
+use_archive <- TRUE
 archive <- TRUE
+
 plot <-  FALSE
 # within 50km of centre of Cumbria
 lat  <- 54.51
@@ -33,14 +35,20 @@ nutrients <- c("Ammonia",
                "Total_Phosphorus")
 
 # 1. Extract SAGIS data from the files 
-sagis_nuts <- map(.x = nutrients, .f = extract_SAGIS, 
-                  inlake_summary = mean, 
-                  portion = 'MeanLdKGd') |> 
-  list_rbind()
-
-if (archive) {
-  sagis_nuts |> write_csv("data/FW_ Request for information - Ref_ EIR2026_11092GC/lake_loads.csv")
+if (use_archive) {
+  sagis_nuts <- read_csv("data/FW_ Request for information - Ref_ EIR2026_11092GC/lake_loads.csv")
+} else {
+  sagis_nuts <- map(.x = nutrients, .f = extract_SAGIS, 
+                    inlake_summary = mean, 
+                    portion = 'MeanLdKGd') |> 
+    list_rbind()
+  
+  if (archive) {
+    sagis_nuts |> write_csv("data/FW_ Request for information - Ref_ EIR2026_11092GC/lake_loads.csv")
+  }
 }
+
+
 
 
 if (plot) {
@@ -115,60 +123,65 @@ if (plot) {
 # ----------------------------------------------- #
 
 ### Get the station info -------------------------
-url_stations <- paste0("http://environment.data.gov.uk/hydrology/id/stations?_limit=1000",
-                       "&dist=", dist, "&lat=", lat, "&long=", long)
-
-# Fetch using httr
-res <- GET(url_stations)
-
-# Parse JSON
-raw <- content(res, as = "text", encoding = "UTF-8")
-json <- fromJSON(raw, flatten = TRUE)
-
-stations <- json$items
-
-# Filter stations that have FLOW measures
-stations_with_flow <- stations %>%
-  mutate(has_flow = map_lgl(measures, ~ any(.x$parameter == "flow"))) |> 
-  filter(has_flow)
-
-station_ids_flow <- stations_with_flow$stationGuid
-
-##----------------------------------------------#
-
-### Get the flow data -------------------------
-# Apply to all station IDs
-all_ld_flow <- map(station_ids_flow, get_flow_data) |> 
-  list_rbind() |> 
-  left_join(stations_with_flow, by = join_by(station_id == stationGuid))
-
-if (plot) {
-  all_ld_flow |> 
-    mutate(doy = yday(datetime - months(9)), # set the first day as Oct 1
-           year =  year(datetime - months(9)) + 1) |>
-    ggplot(aes(x= as_date(doy + 274), # get the actual data
-               y=value)) +
-    # geom_line(aes(group = year)) +
-    geom_smooth(method = 'gam', formula = y ~ s(x, bs = "cc")) +
-    facet_wrap(~label, scales = 'free_y') +
-    scale_x_date(date_labels = "%d %b", name = 'Day of year') +
-    theme_bw()
+if (!use_archive) {
+  url_stations <- paste0("http://environment.data.gov.uk/hydrology/id/stations?_limit=1000",
+                         "&dist=", dist, "&lat=", lat, "&long=", long)
   
-  all_ld_flow |> 
-    mutate(doy = yday(datetime - months(9)), # set the first day as Oct 1
-           year =  year(datetime - months(9)) + 1) |>
-    ggplot(aes(x= as_date(doy + 274), # get the actual data
-               y=value)) +
-    geom_line(aes(group = year)) +
-    facet_wrap(~label, scales = 'free_y') +
-    scale_x_date(date_labels = "%d %b", name = 'Day of year') +
-    theme_bw()
-}
-
-
-if (archive) {
-  all_ld_flow |> 
-    write_csv("data/EArivers_archive/flow_measurements.csv")
+  # Fetch using httr
+  res <- GET(url_stations)
+  
+  # Parse JSON
+  raw <- content(res, as = "text", encoding = "UTF-8")
+  json <- fromJSON(raw, flatten = TRUE)
+  
+  stations <- json$items
+  
+  # Filter stations that have FLOW measures
+  stations_with_flow <- stations %>%
+    mutate(has_flow = map_lgl(measures, ~ any(.x$parameter == "flow"))) |> 
+    filter(has_flow)
+  
+  station_ids_flow <- stations_with_flow$stationGuid
+  
+  ##----------------------------------------------#
+  
+  ### Get the flow data -------------------------
+  # Apply to all station IDs
+  all_ld_flow <- map(station_ids_flow, get_flow_data) |> 
+    list_rbind() |> 
+    left_join(stations_with_flow, by = join_by(station_id == stationGuid))
+  
+  if (plot) {
+    all_ld_flow |> 
+      mutate(doy = yday(datetime - months(9)), # set the first day as Oct 1
+             year =  year(datetime - months(9)) + 1) |>
+      ggplot(aes(x= as_date(doy + 274), # get the actual data
+                 y=value)) +
+      # geom_line(aes(group = year)) +
+      geom_smooth(method = 'gam', formula = y ~ s(x, bs = "cc")) +
+      facet_wrap(~label, scales = 'free_y') +
+      scale_x_date(date_labels = "%d %b", name = 'Day of year') +
+      theme_bw()
+    
+    all_ld_flow |> 
+      mutate(doy = yday(datetime - months(9)), # set the first day as Oct 1
+             year =  year(datetime - months(9)) + 1) |>
+      ggplot(aes(x= as_date(doy + 274), # get the actual data
+                 y=value)) +
+      geom_line(aes(group = year)) +
+      facet_wrap(~label, scales = 'free_y') +
+      scale_x_date(date_labels = "%d %b", name = 'Day of year') +
+      theme_bw()
+  }
+  
+  
+  if (archive) {
+    all_ld_flow |> 
+      write_csv("data/EArivers_archive/flow_measurements.csv")
+  }
+} else {
+  all_ld_flow <- read_csv("data/EArivers_archive/flow_measurements.csv")
+  
 }
 
 ##----------------------------------------------#
@@ -223,66 +236,73 @@ if (plot) {
 
 ### Get sample location info -----------------------
 
-# Can only do 250 at a time
-skip <- 0 # start with first 250
-station_ids <- NULL
-run <- 0
-rows <- 250
-
-while (rows == 250) {
-  message("skipping ", skip)
-  # Fetch using httr
-  res <- GET(paste0("https://environment.data.gov.uk/water-quality/sampling-point?",
-                    "skip=", skip,
-                    "&limit=250&latitude=54.51&longitude=-3.16&radius=30&samplingPointType=F6"))
+if (!use_archive) {
+  # Can only do 250 at a time
+  skip <- 0 # start with first 250
+  station_ids <- NULL
+  run <- 0
+  rows <- 250
   
-  # Parse JSON
-  raw <- content(res, as = "text", encoding = "UTF-8")
-  json <- fromJSON(raw, flatten = TRUE)
+  while (rows == 250) {
+    message("skipping ", skip)
+    # Fetch using httr
+    res <- GET(paste0("https://environment.data.gov.uk/water-quality/sampling-point?",
+                      "skip=", skip,
+                      "&limit=250&latitude=54.51&longitude=-3.16&radius=30&samplingPointType=F6"))
+    
+    # Parse JSON
+    raw <- content(res, as = "text", encoding = "UTF-8")
+    json <- fromJSON(raw, flatten = TRUE)
+    
+    station_ids_wq <- bind_rows(station_ids, json$member)
+    
+    run <- run + 1
+    rows <- nrow(json$member)
+    message(rows, " rows in JSON")
+    skip <- run * rows
+  } 
   
-  station_ids_wq <- bind_rows(station_ids, json$member)
+  sampling_points <- station_ids_wq$notation
   
-  run <- run + 1
-  rows <- nrow(json$member)
-  message(rows, " rows in JSON")
-  skip <- run * rows
-} 
-
-sampling_points <- station_ids_wq$notation
-
-### Get sample measurements --------------------------
-# want both determinands at all sites
-point_det <- expand_grid(sampling_points, determinand = c('0348', '0117'))
-
-all_samples <- map2(point_det$sampling_points,
-                    point_det$determinand,
-                    get_samples) |> 
-  list_rbind() |> 
-  left_join(station_ids_wq, by = join_by(notation))
-
-if (plot) {
-  all_samples |> 
-    mutate(datetime = ymd_hms(datetime),
-           date = ymd(format(datetime, "%Y-%m-%d"))) |>
-    filter(variable == 'Nitrate-N') |> 
-    ggplot(aes(x=date, y= value)) +
-    geom_point() +
-    facet_wrap(~notation, scales = 'free_y')
+  ### Get sample measurements --------------------------
+  # want both determinands at all sites
+  point_det <- expand_grid(sampling_points, determinand = c('0348', '0117'))
   
-  all_samples |> 
-    mutate(datetime = ymd_hms(datetime),
-           date = ymd(format(datetime, "%Y-%m-%d"))) |>
-    filter(variable == 'Phosphorus-P') |> 
-    ggplot(aes(x=date, y= value)) +
-    geom_point() +
-    facet_wrap(~notation, scales = 'free_y')
+  all_samples <- map2(point_det$sampling_points,
+                      point_det$determinand,
+                      get_samples) |> 
+    list_rbind() |> 
+    left_join(station_ids_wq, by = join_by(notation))
+  
+  if (plot) {
+    all_samples |> 
+      mutate(datetime = ymd_hms(datetime),
+             date = ymd(format(datetime, "%Y-%m-%d"))) |>
+      filter(variable == 'Nitrate-N') |> 
+      ggplot(aes(x=date, y= value)) +
+      geom_point() +
+      facet_wrap(~notation, scales = 'free_y')
+    
+    all_samples |> 
+      mutate(datetime = ymd_hms(datetime),
+             date = ymd(format(datetime, "%Y-%m-%d"))) |>
+      filter(variable == 'Phosphorus-P') |> 
+      ggplot(aes(x=date, y= value)) +
+      geom_point() +
+      facet_wrap(~notation, scales = 'free_y')
+  }
+  
+  if (archive) {
+    all_samples |> 
+      write_csv("data/EArivers_archive/nutrient_samples.csv")
+  }
+  
+  
+} else {
+  all_samples  <- read_csv("data/EArivers_archive/nutrient_samples.csv")
 }
 
 
-if (archive) {
-  all_samples |> 
-    write_csv("data/EArivers_archive/nutrient_samples.csv")
-}
 
 ##--------------------------------------------------------#
 
