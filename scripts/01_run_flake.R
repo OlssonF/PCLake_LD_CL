@@ -65,24 +65,24 @@ for (i in 1:length(lake_names_lookup)) {
   # Select one lake at a time
   wbid <- lake_names_lookup[i]
   message('Running ', wbid, ' ', names(wbid))
-
+  
   # Obtain the lake portal data (fetch, depth etc.)
   lakes_portal_subset <- lakes_portal_df |>
     filter(WBID == wbid)
-
+  
   latitude <- lakes_portal_subset |>
     select(WBLAT) |> pull()
-
+  
   longitude <- lakes_portal_subset |>
     select(WBLONG) |> pull()
-
+  
   elev <- lakes_portal_subset |>
     select(WBALT) |> pull()
-
+  
   # lake_fetch <- lakes_portal_subset$FETCH_KM * 1000 # fetch, convert from km to m - is this actually a good estimate (maximum fetch)
   lake_fetch <- sqrt(lakes_portal_subset$WBSAREA*10000) # convert from Ha->m2 (typical fetch)
   lake_depth <- lakes_portal_subset$MNDP # mean depth
-
+  
   # Set up the drivers and nml files
   setup_FLake(wbid,
               latitude, longitude,
@@ -90,10 +90,10 @@ for (i in 1:length(lake_names_lookup)) {
               lake_lightext = 'clear',
               calc_cc = F, make_met = T, use_annual = F,
               outputfile = file.path(wbid, paste0(wbid,'_clear.rslt')))
-
+  
   # run FLake
   run_FLake(wbid)
-
+  
 }
 
 
@@ -137,7 +137,7 @@ for (i in 1:length(lake_names_lookup)) {
 
 #----------------------------------------------------------#
 
-# Calculate a mean run -------------------------------------
+# Calculate a smoothed run -------------------------------------
 flake_dir <- 'data/flake'
 
 flake_results <- list.files(flake_dir, pattern = '*.rslt', recursive = T, full.names = T)
@@ -145,7 +145,7 @@ flake_nmls <- list.files(flake_dir, pattern = '*.nml', recursive = T, full.names
 
 WIND_WBID <- 29233
 
-# Fit GAM model -------------------------------------------
+# Temps - fit GAM model -------------------------------------------
 
 # Get some rough predictions of water temperature dynamics that can be used in PCLake
 
@@ -211,6 +211,113 @@ for (i in 1:length(lake_names_lookup)) {
   
   # Write to file for PCLake
   write_csv(result, file = file.path(flake_dir, lake_ID_use, paste0(lake_ID_use,'_predictions.csv')))
+  
+}
+
+
+
+# Calculate a timeseries of mixed depths -------------------------------------
+
+# ML - fit GAM model -------------------------------------------
+
+# Get some rough predictions of mixed depth dynamics that can be used in PCLake
+
+for (i in 1:length(lake_names_lookup)) {
+  
+  lake_ID_use <- lake_names_lookup[i]
+  flake_IDs <- flake_results[str_detect(flake_results, as.character(lake_ID_use))]
+  flake_nml <-  glmtools::read_nml(flake_nmls[str_detect(flake_nmls, as.character(lake_ID_use))])
+  
+  lake_name_use <- names(lake_names_lookup)[i]
+  
+  mean_depth <- lakes_portal_df |>
+    filter(WBID == lake_ID_use) |> 
+    pull(MNDP)
+  
+  ## read the FLake results ------------------
+  clear_df <- read_flake(flake_IDs[1]) |> 
+    mutate(doy = yday(as_date(time)),
+           year = year(as_date(time)))|> 
+    # slice_tail(n = 365) |> 
+    mutate(time = row_number())
+  
+  turbid_df <- read_flake(flake_IDs[2]) |> 
+    mutate(doy = yday(as_date(time)),
+           year = year(as_date(time)))|> 
+    # slice_tail(n = 365) |> 
+    mutate(time = row_number())
+  
+  #----------------------------------------#
+  
+  ## Calculate the mean of the two light extinction runs
+  mean_df <- as.data.frame(Map(function(x, y) {(x + y) / 2}, clear_df, turbid_df))
+  
+  mean_df_medi <- mean_df |> 
+    reframe(.by = doy, 
+            h_ML = median(h_ML)) 
+  
+  mean_df |> 
+    reframe(.by = doy, 
+            h_ML = mean(h_ML)) |> 
+    mutate(strat = ifelse(h_ML == mean_depth | h_ML == 0, F, T)) |> 
+    ggplot(aes(x=doy, y = h_ML)) +
+    geom_line(aes()) +
+    geom_point(aes(colour = strat)) +
+    geom_smooth(method = 'gam', formula = y ~ s(x, bs = "cc",  k= 10)) +
+    geom_hline(yintercept = mean_depth) +
+    coord_cartesian(ylim = c(0, mean_depth), reverse = 'y')
+  
+  #-------------------------------------------------------#
+  # ----------extract temps for PCLake --------------------
+  #-------------------------------------------------------#
+  
+  # extract a typical seasonal pattern by fitting a GAM model 
+  # Uses a cyclic basis function, smoother with DOY
+  # fits the data on the mean_df_medi (median year of the mean of the clear and turbid predictions)
+  
+  # Fit GAM with cyclic cubic spline
+  gam_model_ML <- gam(h_ML ~ s(doy, bs = "cc"), data = mean_df_medi)
+  
+  # Create a sequence of DOY values to predict for
+  newdata <- data.frame(doy = 1:365)
+  
+  # Extract fitted values for each DOY
+  fitted_vals_ML <- predict(gam_model_ML, newdata = newdata)
+  
+  # Combine DOY and fitted values
+  result <- data.frame(doy = newdata$doy,
+                       h_ML = round(fitted_vals_ML, digits = 2))
+  
+  # find the dates of the primary stratified period
+  summer_strat <- get_summerstrat(result$h_ML, mean_depth)
+  
+  # omit stratification outside of these periods
+  result <- result |> 
+    mutate(h_ML = ifelse(between(doy, 
+                                 summer_strat[1],
+                                 summer_strat[2]),
+                         h_ML, mean_depth)) 
+  
+  p_results <- ggplot(result, aes(x=doy)) + 
+    geom_line(aes(y = h_ML)) +
+    coord_cartesian(ylim = c(0,mean_depth), reverse = 'y') +
+    geom_hline(yintercept = mean_depth, linetype = 'dashed') +
+    theme_bw() +
+    labs(title = "Fitted GAMs", subtitle = paste(lake_ID_use, lake_name_use))
+  
+  ggsave(p_results ,filename = file.path(flake_dir, 'plots', paste0(lake_ID_use, '_MLpredictions.png')),
+         width = 15, height = 10, units = 'cm')
+  
+
+  # Write to files for PCLake
+  # the mixed layer depth
+  write_csv(result, file = file.path(flake_dir, lake_ID_use, paste0(lake_ID_use,'_MLpredictions.csv')))
+  
+  # the stratification period
+  result |> 
+    mutate(strat = ifelse(h_ML == mean_depth, 0, 1)) |> 
+    select(doy, strat) |> 
+    write_csv(file = file.path(flake_dir, lake_ID_use, paste0(lake_ID_use,'_stratpredictions.csv')))
   
 }
 
