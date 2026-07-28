@@ -179,18 +179,26 @@ for (i in 1:length(lake_names_lookup)) {
   #------------------------------------------------------#
   flake_temps <- read_csv(file.path(project_location, 'data', 'flake', lake_id, paste0(lake_id, '_predictions.csv')),
                           show_col_types = F)
+  flake_mixdepth <- read_csv(file.path(project_location, 'data', 'flake', lake_id, paste0(lake_id, '_MLpredictions.csv')),
+                             show_col_types = F)
+  flake_strat <- read_csv(file.path(project_location, 'data', 'flake', lake_id, paste0(lake_id, '_stratpredictions.csv')),
+                             show_col_types = F)
   
   # Repeat temperatures
   flake_temps <- flake_temps |> 
+    full_join(flake_mixdepth, by = 'doy') |> 
+    full_join(flake_strat, by = 'doy') |> 
     reframe(.by = 'doy',
-            Ts = rep(Ts, years_run),
-            Tb = rep(Tb, years_run),
+            across(all_of(c('Ts', 'Tb', 'h_ML', 'strat')),
+                   ~rep(.x, years_run)),
             year = 1:years_run) |> 
     arrange(year, doy) |> 
     mutate(time = row_number())
   
   lDATM_SETTINGS$forcings$sSet3$mTempEpi$value <- flake_temps$Ts[c(1:nrow(flake_temps), nrow(flake_temps))] 
   lDATM_SETTINGS$forcings$sSet3$mTempHyp$value <- flake_temps$Tb[c(1:nrow(flake_temps), nrow(flake_temps))] 
+  lDATM_SETTINGS$forcings$sSet3$mMixDepth$value <- flake_temps$h_ML[c(1:nrow(flake_temps), nrow(flake_temps))] 
+  lDATM_SETTINGS$forcings$sSet3$mStrat$value <- flake_temps$strat[c(1:nrow(flake_temps), nrow(flake_temps))] 
   # FYI; repeat the last row, for some reason that I don't know the timeseries is longer in PCLake
   
   
