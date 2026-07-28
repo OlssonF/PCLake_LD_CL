@@ -256,16 +256,17 @@ for (i in 1:length(lake_names_lookup)) {
     reframe(.by = doy, 
             h_ML = median(h_ML)) 
   
-  mean_df |> 
-    reframe(.by = doy, 
-            h_ML = mean(h_ML)) |> 
-    mutate(strat = ifelse(h_ML == mean_depth | h_ML == 0, F, T)) |> 
-    ggplot(aes(x=doy, y = h_ML)) +
-    geom_line(aes()) +
-    geom_point(aes(colour = strat)) +
-    geom_smooth(method = 'gam', formula = y ~ s(x, bs = "cc",  k= 10)) +
-    geom_hline(yintercept = mean_depth) +
-    coord_cartesian(ylim = c(0, mean_depth), reverse = 'y')
+  # mean_df |>
+  #   reframe(.by = doy,
+  #           h_ML = median(h_ML)) |>
+  #   mutate(strat = ifelse(round(h_ML, 2) >= round(mean_depth, 2),
+  #                         F, T)) |>
+  #   ggplot(aes(x=doy, y = h_ML)) +
+  #   geom_line(aes()) +
+  #   geom_point(aes(colour = strat)) +
+  #   geom_smooth(method = 'gam', formula = y ~ s(x, bs = "cc")) +
+  #   geom_hline(yintercept = mean_depth) +
+  #   coord_cartesian(ylim = c(0, mean_depth), reverse = 'y')
   
   #-------------------------------------------------------#
   # ----------extract temps for PCLake --------------------
@@ -277,7 +278,7 @@ for (i in 1:length(lake_names_lookup)) {
   
   # Fit GAM with cyclic cubic spline
   gam_model_ML <- gam(h_ML ~ s(doy, bs = "cc"), data = mean_df_medi)
-  
+
   # Create a sequence of DOY values to predict for
   newdata <- data.frame(doy = 1:365)
   
@@ -291,6 +292,9 @@ for (i in 1:length(lake_names_lookup)) {
   # find the dates of the primary stratified period
   summer_strat <- get_summerstrat(result$h_ML, mean_depth)
   
+  if (is.na(length(summer_strat))) {
+    stop('cant find stratified period - check!')
+  }
   # omit stratification outside of these periods
   result <- result |> 
     mutate(h_ML = ifelse(between(doy, 
@@ -319,6 +323,7 @@ for (i in 1:length(lake_names_lookup)) {
     select(doy, strat) |> 
     write_csv(file = file.path(flake_dir, lake_ID_use, paste0(lake_ID_use,'_stratpredictions.csv')))
   
+  message(lake_name_use, ' ', i, '/', length(lake_names_lookup))
 }
 
 
