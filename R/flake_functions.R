@@ -356,3 +356,43 @@ plot_flake <- function(filename, var = 'Ts', ylim, xlim) {
   return(plot)
 }
 
+
+#' Title
+#'
+#' @param ts the timeseries of h_ML 
+#' @param mean_depth it is considered mixed ts > mean_depth
+#'
+#' @returns
+#' @export
+#'
+#' @examples
+
+get_summerstrat <- function(ts, mean_depth) {
+  # add a correction for winter stratification
+  strat_periods <- rle(ts <= mean_depth)
+  #run length encoding according to the strat var
+  
+  #stratification dates
+  rle_strat <- data.frame(strat = strat_periods$values, 
+                          lengths = strat_periods$lengths)
+  
+  # Get the end of ech run
+  rle_strat$end <- cumsum(rle_strat$lengths)
+  # Get the start of each run
+  rle_strat$start <- rle_strat$end - rle_strat$lengths + 1
+  
+  # Sort rows by whehter it is stratified or not
+  rle_strat <- rle_strat[order(rle_strat$strat), ]
+  
+  start_day <- rle_strat$start[which(rle_strat$length == max(rle_strat$lengths)
+                                     & rle_strat$strat == 1)] 
+  #gets the row with the start date
+  #of the run which has the max length and is 1
+  
+  end_day <- rle_strat$end[which(rle_strat$length == max(rle_strat$lengths)
+                                 & rle_strat$strat == 1)] 
+  #gets the row with the end date
+  #of the run which has the max length and is TRuE
+  
+  return(c(start_day, end_day))
+}
