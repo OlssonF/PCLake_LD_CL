@@ -392,5 +392,13 @@ get_summerstrat <- function(ts, mean_depth) {
   #gets the row with the end date
   #of the run which has the max length and is TRuE
   
-  return(c(start_day, end_day))
+  # if there is no stratification
+  if (nrow(filter(rle_strat, strat == T)) == 0){
+     return(c(0, 0))
+  } else {
+    return(c(start_day, end_day))
+
+  }
+  
+  
 }

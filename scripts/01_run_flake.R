@@ -292,9 +292,10 @@ for (i in 1:length(lake_names_lookup)) {
   # find the dates of the primary stratified period
   summer_strat <- get_summerstrat(result$h_ML, mean_depth)
   
-  if (is.na(length(summer_strat))) {
+  if (length(summer_strat) == 0) {
     stop('cant find stratified period - check!')
   }
+  
   # omit stratification outside of these periods
   result <- result |> 
     mutate(h_ML = ifelse(between(doy, 
