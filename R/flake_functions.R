@@ -369,7 +369,7 @@ plot_flake <- function(filename, var = 'Ts', ylim, xlim) {
 
 get_summerstrat <- function(ts, mean_depth) {
   # add a correction for winter stratification
-  strat_periods <- rle(ts <= mean_depth)
+  strat_periods <- rle(abs(ts - mean_depth) > 0.1)
   #run length encoding according to the strat var
   
   #stratification dates
@@ -384,13 +384,11 @@ get_summerstrat <- function(ts, mean_depth) {
   # Sort rows by whehter it is stratified or not
   rle_strat <- rle_strat[order(rle_strat$strat), ]
   
-  start_day <- rle_strat$start[which(rle_strat$length == max(rle_strat$lengths)
-                                     & rle_strat$strat == 1)] 
+  start_day <- rle_strat |> filter(strat == T) |> slice_max(lengths) |> pull(start)
   #gets the row with the start date
-  #of the run which has the max length and is 1
+  #of the run which has the max length and is T
   
-  end_day <- rle_strat$end[which(rle_strat$length == max(rle_strat$lengths)
-                                 & rle_strat$strat == 1)] 
+  end_day <- rle_strat |> filter(strat == T) |> slice_max(lengths) |> pull(end)
   #gets the row with the end date
   #of the run which has the max length and is TRuE
   
