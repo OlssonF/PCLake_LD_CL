@@ -164,7 +164,7 @@ for (i in 1:length(lake_names_lookup)) {
     mutate(.by = variable, time = row_number())
   
   PLoad <- loads_pclake |> 
-    filter(variable == 'phosphorus')
+    filter(variable == 'phosphate')
   
   NLoad  <- loads_pclake |> 
     filter(variable == 'nitrate')
@@ -231,9 +231,6 @@ for (i in 1:length(lake_names_lookup)) {
   lDATM_SETTINGS$forcings$sSet3$mVWind$value <- era5_met$ws[c(1:nrow(era5_met), nrow(era5_met))][c(1:((years_run*365)+1))] 
   lDATM_SETTINGS$forcings$sSet3$mLOut$value <- era5_met$sr[c(1:nrow(era5_met), nrow(era5_met))] [c(1:((years_run*365)+1))]
   # FYI; repeat the last row, for some reason that I don't know the timeseries is longer in PCLake
-  
-  #set minimal hypolimnetic depth to 0.5m
-  lDATM_SETTINGS$params[str_detect(rownames(lDATM_SETTINGS$params), 'cMinDepthHypEpi'), change_sets] <- 0.01 # bigger number
   
   
   # Run PCLake+ --------------------------------------------------
