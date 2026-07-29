@@ -416,12 +416,12 @@ if (plot) {
 
 # Apply scalings to  SAGIS annual loadings 
 sagis_loads <- read.csv("data/FW_ Request for information - Ref_ EIR2026_11092GC/lake_loads.csv") |> 
-  filter(variable %in% c('Nitrate', 'Total_Phosphorus')) |> 
+  filter(variable %in% c('Nitrate', 'Phosphate')) |> 
   mutate(value_kg_year = value_kg_day * 365) # SAGIS data are in kg/day
 
 sagis_monthly <- sagis_loads |> 
   mutate(variable = ifelse(variable == 'Nitrate', 'Nitrate-N', 
-                           ifelse(variable == 'Total_Phosphorus', 'Phosphorus-P', NA))) |> 
+                           ifelse(variable == 'Phosphate', 'Phosphorus-P', NA))) |> 
   full_join(combined_scaling, by = join_by(variable),
             relationship = 'many-to-many') |> 
   mutate(value_kg_month = value_kg_year * prop_scale) 
@@ -498,7 +498,7 @@ sagis_daily |>
           .by = c('variable', 'NAME', 'WBID')) |> 
   mutate(variable = ifelse(variable == 'Nitrate-N', 'Nitrate',
                            ifelse(variable == 'Phosphorus-P', 
-                                  'Total_phosphorus', NA))) |> 
+                                  'Phosphate', NA))) |> 
   full_join(sagis_nuts) |> 
   mutate(test = ifelse((daily_av - value_kg_day)/value_kg_day < 0.01, T, F))|> 
   filter(test == F) 
@@ -509,6 +509,6 @@ if (archive) {
     select(day, variable, NAME, WBID, value_kg_day) |> 
     mutate(variable = ifelse(variable == 'Nitrate-N', 'nitrate',
                              ifelse(variable == 'Phosphorus-P', 
-                                    'phosphorus', NA))) |> 
+                                    'phosphate', NA))) |> 
     write_csv("data/FW_ Request for information - Ref_ EIR2026_11092GC/lake_loads_daily.csv")
 }
