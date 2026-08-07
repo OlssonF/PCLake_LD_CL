@@ -13,7 +13,7 @@ start_date <- '2000-01-01'
 
 
 # Read in model output ----------------
-pclake_results <- list.files(out_dir, pattern = 'clear.csv', recursive = T, full.names = T)
+pclake_results <- list.files(out_dir, pattern = 'turbid.csv', recursive = T, full.names = T)
 
 subset <- T # run all lakes or not
 
@@ -122,11 +122,11 @@ EA_obs <- lapply(list.files(file.path(val_dir, 'EA_WQ'), '.csv', full.names = T)
     mutate(doy = yday(Date),
            year = year(Date)) |> 
     ggplot(aes(x=doy, y = diskvalu)) +
-    geom_line(aes(y = aSecchiT, group = year), alpha = 0.3) +
     geom_point(size = 0.9, alpha = 0.3) +
+    geom_line(aes(y = aSecchiT, group = year), alpha = 0.6, colour = 'goldenrod') + # PClake in mg/m3
     theme_bw() +
     facet_wrap(~WBID+NAME, scales = 'free_y')) |> 
-  ggsave(filename = file.path(out_dir, 'plot', 'secchi_val_clear.png'), 
+  ggsave(filename = file.path(out_dir, 'plot', 'secchi_val_turbid.png'),
          height = 20, width = 20, units = 'cm')
 
 (baseline_runs |> 
@@ -136,11 +136,11 @@ EA_obs <- lapply(list.files(file.path(val_dir, 'EA_WQ'), '.csv', full.names = T)
     mutate(doy = yday(Date),
            year = year(Date)) |> 
     ggplot(aes(x=doy, y = chemvalu)) + # obs are in ug/L
-    geom_line(aes(y = oChlaEpi, group = year), alpha = 0.3) + # PClake in mg/m3
-    geom_point(size = 0.9, alpha = 0.6) +
+    geom_point(size = 0.9, alpha = 0.3) +
+    geom_line(aes(y = oChlaEpi, group = year), alpha = 0.6, colour = 'seagreen') + # PClake in mg/m3
     theme_bw() +
     facet_wrap(~WBID+NAME, scales = 'free_y')) |> 
-  ggsave(filename = file.path(out_dir, 'plot', 'chla_val_clear.png'), 
+  ggsave(filename = file.path(out_dir, 'plot', 'chla_val_turbid.png'),
          height = 20, width = 20, units = 'cm')
 
 
@@ -152,11 +152,11 @@ EA_obs <- lapply(list.files(file.path(val_dir, 'EA_WQ'), '.csv', full.names = T)
            year = year(Date)) |> 
     
     ggplot(aes(x=doy, y = chemvalu/1000)) + # obs are in ug/L
-    geom_line(aes(y = oPTotWEpi, group = year), alpha = 0.3) + # PClake in g/m3
-    geom_point(size = 0.9, alpha = 0.6) +
+    geom_point(size = 0.9, alpha = 0.3) +
+    geom_line(aes(y = oPTotWEpi, group = year), alpha = 0.6, colour = 'orchid4') + # PClake in g/m3
     theme_bw() +
     facet_wrap(~WBID+NAME, scales = 'free_y')) |> 
-  ggsave(filename = file.path(out_dir, 'plot', 'TP_val_clear.png'), 
+  ggsave(filename = file.path(out_dir, 'plot', 'TP_val_turbid.png'),
          height = 20, width = 20, units = 'cm')
 
 
