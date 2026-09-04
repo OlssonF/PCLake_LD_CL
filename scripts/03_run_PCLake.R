@@ -156,7 +156,43 @@ for (i in 1:length(lake_names_lookup)) {
   lDATM_SETTINGS$params['cFetch', change_sets] <- sqrt(lakes_portal_use$WBSAREA*10000) # convert from Ha->m2 (typical fetch)
   lDATM_SETTINGS$params['cLAT', change_sets] <- latitude_use # latitude
   lDATM_SETTINGS$params['cDepthWInit0', change_sets] <- lakes_portal_use$MNDP # mean depth
-  lDATM_SETTINGS$params['cQInEpi', change_sets] <- Qin_use # Inflow
+
+  #-----------------------------------------------------#
+  # Qin--------------------------------------------------
+  #-----------------------------------------------------#
+  
+  Qin_use <- lakes_portal_use |> 
+    mutate(RET_TIMEdays = RET_TIMEyrs * 365) |> # this value is in years, convert to days
+    mutate(QIn = (MNDP*1000)/RET_TIMEdays) |> # convert MNDP to mm
+    select(QIn) |> 
+    pull() 
+  
+  # scale the Qin using teh seasonal scaling factors
+  discharge_scaling <- read_csv('data/EArivers_archive/month_scaling_factors.csv', show_col_types = F) |> 
+    distinct(month, discharge_scaling) |>  # only take the discharge scaling
+    mutate(Qin_scaled = Qin_use * discharge_scaling) 
+  
+  daily_Qin <- discharge_scaling |> 
+    mutate(Date = dmy(paste0('01-',month, '-2026')),
+           n_days = days_in_month(Date)) |> 
+    select(Date, Qin_scaled) |> 
+    full_join(data.frame(Date = as_date(seq.Date(as_date('2026-01-01'), as_date('2026-12-31'), 'day'))),
+              by = join_by(Date)) |> 
+    arrange(Date) |> 
+    mutate(Qin_scaled = imputeTS::na_locf(Qin_scaled, na_remaining = 'rev'),
+           day = yday(Date))
+  
+  # Repeat nutrient Loads
+  pclake_Qin <- daily_Qin |>  
+    select(day, Qin_scaled) |> 
+    reframe(.by = all_of(c('day')),
+            value = rep(Qin_scaled, years_run),
+            year = 1:years_run) |> 
+    arrange(year, day) |> 
+    mutate(time = row_number())
+  
+  lDATM_SETTINGS$forcings$sSet3$mQInEpi$value <- pclake_Qin$value[c(1:nrow(pclake_Qin), nrow(pclake_Qin))] 
+  lDATM_SETTINGS$forcings$sSet3$mQInHyp$value <- 0
   
   # -----------------------------------------------------#
   ## SAGIS (nutrient loading) ---------------------
