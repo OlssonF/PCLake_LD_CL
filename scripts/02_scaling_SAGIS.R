@@ -16,7 +16,8 @@ source('R/sagis_funs.R')
 
 # to save the data locally or not?
 use_archive <- TRUE
-archive <- TRUE
+archive <- FALSE
+archive_scaling <- TRUE
 
 plot <-  FALSE
 # within 50km of centre of Cumbria
@@ -408,6 +409,11 @@ if (plot) {
   
 }
 
+if(archive_scaling) {
+  combined_scaling |> 
+    write_csv("data/EArivers_archive/month_scaling_factors.csv")
+}
+  
 ## ----------------------------------------------------#
 
 ## ----------------------------------------------------#
