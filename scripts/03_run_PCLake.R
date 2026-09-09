@@ -94,7 +94,7 @@ rep_vars <- c(
   'uTmEpi', 'uTmHyp', 'uDepthMixMeas', 'uDepthWEpi', 'uDepthWHyp', 'aStrat', 
   'oPO4WHyp',  'oPO4WEpi', 'aDVeg', 'oO2WHyp',  'tPDifPO4Hyp', 'aDFiAd', 'aDFiJv', 'aDPisc', 
   'aDError','aNError','aPError','aO2Error', 'aDepthError',# model errors
-  'uVWind', 'uLOut','uPLoadEpi', 'uNLoadEpi' # forcings
+  'uVWind', 'uLOut','uPLoadEpi', 'uNLoadEpi', 'uQInEpi'# forcings
 )
 lDATM_SETTINGS$auxils$iReport[which(rownames(lDATM_SETTINGS$auxils) %in% rep_vars)] <- 1 # report these in the output
 
@@ -182,7 +182,7 @@ for (i in 1:length(lake_names_lookup)) {
     mutate(Qin_scaled = imputeTS::na_locf(Qin_scaled, na_remaining = 'rev'),
            day = yday(Date))
   
-  # Repeat nutrient Loads
+  # Repeat Qin
   pclake_Qin <- daily_Qin |>  
     select(day, Qin_scaled) |> 
     reframe(.by = all_of(c('day')),
@@ -190,6 +190,9 @@ for (i in 1:length(lake_names_lookup)) {
             year = 1:years_run) |> 
     arrange(year, day) |> 
     mutate(time = row_number())
+ 
+  lDATM_SETTINGS$forcings$sSet2$mQInEpi$value <- pclake_Qin$value[c(1:nrow(pclake_Qin), nrow(pclake_Qin))] 
+  lDATM_SETTINGS$forcings$sSet2$mQInHyp$value <- 0
   
   lDATM_SETTINGS$forcings$sSet3$mQInEpi$value <- pclake_Qin$value[c(1:nrow(pclake_Qin), nrow(pclake_Qin))] 
   lDATM_SETTINGS$forcings$sSet3$mQInHyp$value <- 0
