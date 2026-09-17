@@ -52,8 +52,9 @@ ggarrange(plotlist = all_flake[(1 + (length(flake_results)/2)):length(flake_resu
           nrow = 3, ncol = 6)
 
 # Read in data
-val_data <- read_csv('data/Validation/temperature and oxygen.csv') |> 
-  filter(variable == 'TEMP')
+val_data <- read_csv('data/Validation/output/LD_combined_database.csv') |> 
+  filter(variable_code == 'TEMP') |> 
+  filter(date >= as_date('1980-01-01'))
 
 WIND <- c(47007, 47008) # these are the WBIDs for the NBAS and SBAS
 WIND_WBID <- 29233
@@ -86,19 +87,10 @@ for (i in 1:length(lake_names_lookup)) {
   
   mean_df <- as.data.frame(Map(function(x, y) {(x + y) / 2}, clear_df, turbid_df))
   
-  # how to know the max - siple, take the max most common
-  use_max_depth <- val_data |> 
-    filter(site == lake_name_use) |> 
-    group_by(depth) |> 
-    summarise(n = n()) |> 
-    filter(n > 20) |> 
-    slice_max(depth) |> pull(depth)
-  
   val_surface <- val_data |> 
-    filter(site == lake_name_use ,
-           depth < 1) |> 
-    mutate(date = lubridate::parse_date_time2(date, 'dby', cutoff_2000 = 25),
-           doy = yday(date),
+    filter(site_id == lake_ID_use ,
+           depth_zone == 'surface') |> 
+    mutate(doy = yday(date),
            year = year(date))
   
   ggarrange(clear_df |> 
@@ -125,15 +117,13 @@ for (i in 1:length(lake_names_lookup)) {
               labs(title = 'mean'),
             
             nrow = 3) |> 
-    ggsave(filename = file.path('./data/flake/plots', paste0(lake_IDs[i], '_val_surface_obs.png')),
+    ggsave(filename = file.path('./data/flake/plots', paste0(lake_ID_use, '_val_surface_obs.png')),
            width = 7, height = 18, units = 'cm')
   
   val_bottom <- val_data |> 
-    filter(site == lake_name_use ,
-           depth >= use_max_depth) |> 
-    reframe(.by = date, value = mean(value, na.rm = T)) |> 
-    mutate(date = lubridate::parse_date_time2(date, 'dby', cutoff_2000 = 25),
-           doy = yday(date),
+    filter(site_id == lake_ID_use ,
+           depth_zone == 'bottom') |> 
+    mutate(doy = yday(date),
            year = year(date))
   
   ggarrange(clear_df |> 
@@ -160,9 +150,29 @@ for (i in 1:length(lake_names_lookup)) {
               labs(title = 'mean'),
             
             nrow = 3) |> 
-    ggsave(filename = file.path(flake_dir, 'plots', paste0(lake_IDs[i], '_val_bottom_obs.png')),
+    ggsave(filename = file.path(flake_dir, 'plots', paste0(lake_ID_use, '_val_bottom_obs.png')),
            width = 7, height = 18, units = 'cm')
 
+  
+  ggarrange(clear_df |> 
+              ggplot(aes(x=doy, y = h_ML, group = year)) + 
+              geom_line() +
+              theme_bw() +
+              labs(title = basename(flake_IDs[1])) ,
+            turbid_df |> 
+              ggplot(aes(x=doy, y = h_ML, group = year))  + 
+              geom_line() +
+              theme_bw() +
+              labs(title = basename(flake_IDs[2])),
+            # calculate a mean from the clear and turbid
+            mean_df  |>
+              ggplot(aes(x=doy, y = h_ML, group = year))  +
+              geom_line() +
+              theme_bw() +
+              labs(title = 'mean'),
+            nrow = 3) |> 
+    ggsave(filename = file.path(flake_dir, 'plots', paste0(lake_ID_use, '_val_bottom_obs.png')),
+           width = 7, height = 18, units = 'cm')
   
 }
 
