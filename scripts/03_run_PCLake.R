@@ -179,7 +179,7 @@ for (i in 1:length(lake_names_lookup)) {
     full_join(data.frame(Date = as_date(seq.Date(as_date('2026-01-01'), as_date('2026-12-31'), 'day'))),
               by = join_by(Date)) |> 
     arrange(Date) |> 
-    mutate(Qin_scaled = imputeTS::na_locf(Qin_scaled, na_remaining = 'rev'),
+    mutate(Qin_scaled = zoo::na.locf(Qin_scaled),
            day = yday(Date))
   
   # Repeat Qin
@@ -282,6 +282,7 @@ for (i in 1:length(lake_names_lookup)) {
     reframe(.by = all_of(c('name', 'date')),
             value = rep(value, 2), # two repeats of the 25 years
             year = 1:2) |> 
+    arrange(year, date) |> 
     pivot_wider(names_from = name, values_from = value) |> 
     rename(!!!met_vars) |> 
     mutate(time = row_number(), 
