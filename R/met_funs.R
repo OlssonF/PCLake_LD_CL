@@ -78,6 +78,7 @@ get_EOBS_ts <- function(nc_file, var_name, latitude, longitude) {
 #'
 #' @examples
 get_era5_ts <- function(var_name, latitude, longitude, daily = T) {
+  library(ncdf4)
   
   file_var <- if (var_name %in% c('u10', 'v10')) {
     "wind"
