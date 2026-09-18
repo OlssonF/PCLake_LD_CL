@@ -9,6 +9,7 @@ library(tidyverse)
 library(here)
 library(doSNOW)
 library(parallelly)
+library(foreach)
 source('R/met_funs.R')
 
 ## Order of actions to run PCLake in R
@@ -122,16 +123,17 @@ change_sets <-c('sSet2', 'sSet3')
 
 setwd(project_location)
 
-# i=1
-for (i in 1:length(lake_names_lookup)) {
+# Function to do a turbid/clear run of PCLake in the lake district
+run_pclake <- function(i, lDATM_SETTINGS_local = lDATM_SETTINGS, lakes_portal_local = lakes_portal_df) {
   
-  # Select one lake at a time
   lake_id <- lake_names_lookup[i]
   lake_name <- names(lake_names_lookup[i])
   
+  message("Starting lake ", lake_id, " on worker ", Sys.getpid())
+  
   # Obtain the lake portal data (fetch, depth etc.)
-  lakes_portal_use <- lakes_portal_df |> 
-    filter(WBID ==lake_id) 
+  lakes_portal_use <- lakes_portal_local |> 
+    dplyr::filter(WBID ==lake_id) 
   #-------------------------------------------------------------#
   # Forcing timeseries -----------------------------------------#
   # ------------------------------------------------------------#
@@ -153,10 +155,10 @@ for (i in 1:length(lake_names_lookup)) {
   
   # Set WB specific parameters -------------------------#
   #-----------------------------------------------------#
-  lDATM_SETTINGS$params['cFetch', change_sets] <- sqrt(lakes_portal_use$WBSAREA*10000) # convert from Ha->m2 (typical fetch)
-  lDATM_SETTINGS$params['cLAT', change_sets] <- latitude_use # latitude
-  lDATM_SETTINGS$params['cDepthWInit0', change_sets] <- lakes_portal_use$MNDP # mean depth
-
+  lDATM_SETTINGS_local$params['cFetch', change_sets] <- sqrt(lakes_portal_use$WBSAREA*10000) # convert from Ha->m2 (typical fetch)
+  lDATM_SETTINGS_local$params['cLAT', change_sets] <- latitude_use # latitude
+  lDATM_SETTINGS_local$params['cDepthWInit0', change_sets] <- lakes_portal_use$MNDP # mean depth
+  
   #-----------------------------------------------------#
   # Qin--------------------------------------------------
   #-----------------------------------------------------#
@@ -190,12 +192,12 @@ for (i in 1:length(lake_names_lookup)) {
             year = 1:years_run) |> 
     arrange(year, day) |> 
     mutate(time = row_number())
- 
-  lDATM_SETTINGS$forcings$sSet2$mQInEpi$value <- pclake_Qin$value[c(1:nrow(pclake_Qin), nrow(pclake_Qin))] 
-  lDATM_SETTINGS$forcings$sSet2$mQInHyp$value <- 0
   
-  lDATM_SETTINGS$forcings$sSet3$mQInEpi$value <- pclake_Qin$value[c(1:nrow(pclake_Qin), nrow(pclake_Qin))] 
-  lDATM_SETTINGS$forcings$sSet3$mQInHyp$value <- 0
+  lDATM_SETTINGS_local$forcings$sSet2$mQInEpi$value <- pclake_Qin$value[c(1:nrow(pclake_Qin), nrow(pclake_Qin))] 
+  lDATM_SETTINGS_local$forcings$sSet2$mQInHyp$value <- 0
+  
+  lDATM_SETTINGS_local$forcings$sSet3$mQInEpi$value <- pclake_Qin$value[c(1:nrow(pclake_Qin), nrow(pclake_Qin))] 
+  lDATM_SETTINGS_local$forcings$sSet3$mQInHyp$value <- 0
   
   # -----------------------------------------------------#
   ## SAGIS (nutrient loading) ---------------------
@@ -221,11 +223,11 @@ for (i in 1:length(lake_names_lookup)) {
   NLoad  <- loads_pclake |> 
     filter(variable == 'nitrate')
   
-  lDATM_SETTINGS$forcings$sSet2$mPLoadEpi$value <- PLoad$value[c(1:nrow(PLoad), nrow(PLoad))] 
-  lDATM_SETTINGS$forcings$sSet2$mNLoadEpi$value <- NLoad$value[c(1:nrow(NLoad), nrow(NLoad))] 
+  lDATM_SETTINGS_local$forcings$sSet2$mPLoadEpi$value <- PLoad$value[c(1:nrow(PLoad), nrow(PLoad))] 
+  lDATM_SETTINGS_local$forcings$sSet2$mNLoadEpi$value <- NLoad$value[c(1:nrow(NLoad), nrow(NLoad))] 
   
-  lDATM_SETTINGS$forcings$sSet3$mPLoadEpi$value <- PLoad$value[c(1:nrow(PLoad), nrow(PLoad))] 
-  lDATM_SETTINGS$forcings$sSet3$mNLoadEpi$value <- NLoad$value[c(1:nrow(NLoad), nrow(NLoad))] 
+  lDATM_SETTINGS_local$forcings$sSet3$mPLoadEpi$value <- PLoad$value[c(1:nrow(PLoad), nrow(PLoad))] 
+  lDATM_SETTINGS_local$forcings$sSet3$mNLoadEpi$value <- NLoad$value[c(1:nrow(NLoad), nrow(NLoad))] 
   # FYI; repeat the last row, for some reason that I don't know the timeseries is longer in PCLake
   
   
@@ -250,15 +252,15 @@ for (i in 1:length(lake_names_lookup)) {
     arrange(year, doy) |> 
     mutate(time = row_number())
   
-  lDATM_SETTINGS$forcings$sSet2$mTempEpi$value <- flake_temps$Ts[c(1:nrow(flake_temps), nrow(flake_temps))] 
-  lDATM_SETTINGS$forcings$sSet2$mTempHyp$value <- flake_temps$Tb[c(1:nrow(flake_temps), nrow(flake_temps))] 
-  lDATM_SETTINGS$forcings$sSet2$mMixDepth$value <- flake_temps$h_ML[c(1:nrow(flake_temps), nrow(flake_temps))] 
-  lDATM_SETTINGS$forcings$sSet2$mStrat$value <- flake_temps$strat[c(1:nrow(flake_temps), nrow(flake_temps))] 
+  lDATM_SETTINGS_local$forcings$sSet2$mTempEpi$value <- flake_temps$Ts[c(1:nrow(flake_temps), nrow(flake_temps))] 
+  lDATM_SETTINGS_local$forcings$sSet2$mTempHyp$value <- flake_temps$Tb[c(1:nrow(flake_temps), nrow(flake_temps))] 
+  lDATM_SETTINGS_local$forcings$sSet2$mMixDepth$value <- flake_temps$h_ML[c(1:nrow(flake_temps), nrow(flake_temps))] 
+  lDATM_SETTINGS_local$forcings$sSet2$mStrat$value <- flake_temps$strat[c(1:nrow(flake_temps), nrow(flake_temps))] 
   
-  lDATM_SETTINGS$forcings$sSet3$mTempEpi$value <- flake_temps$Ts[c(1:nrow(flake_temps), nrow(flake_temps))] 
-  lDATM_SETTINGS$forcings$sSet3$mTempHyp$value <- flake_temps$Tb[c(1:nrow(flake_temps), nrow(flake_temps))] 
-  lDATM_SETTINGS$forcings$sSet3$mMixDepth$value <- flake_temps$h_ML[c(1:nrow(flake_temps), nrow(flake_temps))] 
-  lDATM_SETTINGS$forcings$sSet3$mStrat$value <- flake_temps$strat[c(1:nrow(flake_temps), nrow(flake_temps))] 
+  lDATM_SETTINGS_local$forcings$sSet3$mTempEpi$value <- flake_temps$Ts[c(1:nrow(flake_temps), nrow(flake_temps))] 
+  lDATM_SETTINGS_local$forcings$sSet3$mTempHyp$value <- flake_temps$Tb[c(1:nrow(flake_temps), nrow(flake_temps))] 
+  lDATM_SETTINGS_local$forcings$sSet3$mMixDepth$value <- flake_temps$h_ML[c(1:nrow(flake_temps), nrow(flake_temps))] 
+  lDATM_SETTINGS_local$forcings$sSet3$mStrat$value <- flake_temps$strat[c(1:nrow(flake_temps), nrow(flake_temps))] 
   # FYI; repeat the last row, for some reason that I don't know the timeseries is longer in PCLake
   
   
@@ -289,11 +291,11 @@ for (i in 1:length(lake_names_lookup)) {
            ws = sqrt(u10^2 + v10^2)) 
   
   
-  lDATM_SETTINGS$forcings$sSet2$mVWind$value <- era5_met$ws[c(1:nrow(era5_met), nrow(era5_met))][c(1:((years_run*365)+1))] 
-  lDATM_SETTINGS$forcings$sSet2$mLOut$value <- era5_met$sr[c(1:nrow(era5_met), nrow(era5_met))] [c(1:((years_run*365)+1))]
+  lDATM_SETTINGS_local$forcings$sSet2$mVWind$value <- era5_met$ws[c(1:nrow(era5_met), nrow(era5_met))][c(1:((years_run*365)+1))] 
+  lDATM_SETTINGS_local$forcings$sSet2$mLOut$value <- era5_met$sr[c(1:nrow(era5_met), nrow(era5_met))] [c(1:((years_run*365)+1))]
   
-  lDATM_SETTINGS$forcings$sSet3$mVWind$value <- era5_met$ws[c(1:nrow(era5_met), nrow(era5_met))][c(1:((years_run*365)+1))] 
-  lDATM_SETTINGS$forcings$sSet3$mLOut$value <- era5_met$sr[c(1:nrow(era5_met), nrow(era5_met))] [c(1:((years_run*365)+1))]
+  lDATM_SETTINGS_local$forcings$sSet3$mVWind$value <- era5_met$ws[c(1:nrow(era5_met), nrow(era5_met))][c(1:((years_run*365)+1))] 
+  lDATM_SETTINGS_local$forcings$sSet3$mLOut$value <- era5_met$sr[c(1:nrow(era5_met), nrow(era5_met))] [c(1:((years_run*365)+1))]
   # FYI; repeat the last row, for some reason that I don't know the timeseries is longer in PCLake
   
   
@@ -303,36 +305,43 @@ for (i in 1:length(lake_names_lookup)) {
   ## 7.  Initialize model  ------------------------------------------------
   ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   ## Make all initial states according to the run settings
-  InitStates <- PCModelInitializeModel(lDATM = lDATM_SETTINGS,
+  InitStates <- PCModelInitializeModel(lDATM = lDATM_SETTINGS_local,
                                        dirSHELL = dirShell,
                                        nameWORKCASE = nameWorkCase)
   
   message('Running turbid initials')
-  run_turbid <- PCmodelSingleRun(lDATM = lDATM_SETTINGS,
+  run_turbid <- PCmodelSingleRun(lDATM = lDATM_SETTINGS_local,
                                  nRUN_SET = 2,
                                  dfSTATES = InitStates,
                                  integrator_method = "rk45ck", #euler
                                  dirHOME = dirHome,
                                  nameWORKCASE = nameWorkCase) 
   message('Running clear initials')
-  run_clear <- PCmodelSingleRun(lDATM = lDATM_SETTINGS,
+  run_clear <- PCmodelSingleRun(lDATM = lDATM_SETTINGS_local,
                                 nRUN_SET = 3,
                                 dfSTATES = InitStates,
                                 integrator_method = "rk45ck", #euler
                                 dirHOME = dirHome,
                                 nameWORKCASE = nameWorkCase) 
   
-
+  
   dir.create(file.path(project_location, 'output'), showWarnings = F)
-  run_turbid |> 
-    write_csv(file = file.path(project_location, 'output', 
+  run_turbid |>
+    write_csv(file = file.path(project_location, 'output',
                                paste0('baseline_', lake_id, '-turbid.csv')),
               progress = F)
-  
-  run_clear |> 
-    write_csv(file = file.path(project_location, 'output', 
+
+  run_clear |>
+    write_csv(file = file.path(project_location, 'output',
                                paste0('baseline_', lake_id, '-clear.csv')),
               progress = F)
-  
+
   message('Finished ', lake_id, ' ', lake_name)
+  
 }
+
+# run the function in parallel
+library(furrr)
+plan(multisession, workers = 6)
+
+results <- future_map(seq_along(lake_names_lookup), run_pclake, .progress = T)
