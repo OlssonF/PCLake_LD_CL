@@ -30,7 +30,7 @@ ld_lakesportal <- readr::read_csv('data/lakes4PCLake.csv')
 # --------------------------------------------#
 # --------- 1. Extract SAGIS from GIS ------------
 # --------------------------------------------#
-nutrients <- c("Ammonia",
+nutrients <- c(#"Ammonia",
                "Nitrate",
                "Phosphate",
                "Total_Phosphorus")
@@ -42,7 +42,12 @@ if (use_archive) {
   sagis_nuts <- map(.x = nutrients, .f = extract_SAGIS, 
                     inlake_summary = mean, 
                     portion = 'MeanLdKGd') |> 
-    list_rbind()
+    list_rbind() |> 
+    pivot_wider(names_from = variable, values_from = value_kg_day) |> 
+    # use the maximum of the phosphate and total P values
+    mutate(P = ifelse(Total_Phosphorus < Phosphate, Phosphate, Total_Phosphorus)) |> 
+    select(WBID, NAME, source, distance_m, Nitrate, P) |> 
+    pivot_longer(Nitrate:P, names_to = 'variable', values_to = 'value_kg_day') 
   
   if (archive) {
     sagis_nuts |> write_csv("data/FW_ Request for information - Ref_ EIR2026_11092GC/lake_loads.csv")
@@ -64,7 +69,7 @@ if (plot) {
   
   ggpubr::ggarrange(
     polys_summary |> 
-      filter(variable  == nutrients[1]) |> 
+      filter(variable  == 'Nitrate') |> 
       ggplot() +
       geom_sf(aes(fill = value_kg_day), colour = NA) +
       scale_fill_viridis_c(option = "plasma", na.value = "grey") +
@@ -73,31 +78,31 @@ if (plot) {
            fill = "Mean loading per lake"),
     
     polys_summary |> 
-      filter(variable  == nutrients[2]) |> 
+      filter(variable  == 'P') |> 
       ggplot() +
       geom_sf(aes(fill = value_kg_day), colour = NA) +
       scale_fill_viridis_c(option = "viridis", na.value = "grey") +
       theme_minimal() +
       labs(title = nutrients[2],
-           fill = "Mean loading per lake"),
+           fill = "Mean loading per lake"), nrow = 2
     
-    polys_summary |> 
-      filter(variable  == nutrients[3]) |> 
-      ggplot() +
-      geom_sf(aes(fill = value_kg_day), colour = NA) +
-      scale_fill_viridis_c(option = "mako", na.value = "grey") +
-      theme_minimal() +
-      labs(title = nutrients[3], 
-           fill = "Mean loading per lake"),
+    # polys_summary |> 
+    #   filter(variable  == nutrients[3]) |> 
+    #   ggplot() +
+    #   geom_sf(aes(fill = value_kg_day), colour = NA) +
+    #   scale_fill_viridis_c(option = "mako", na.value = "grey") +
+    #   theme_minimal() +
+    #   labs(title = nutrients[3], 
+    #        fill = "Mean loading per lake")#,
     
-    polys_summary |> 
-      filter(variable  == nutrients[4]) |> 
-      ggplot() +
-      geom_sf(aes(fill = value_kg_day), colour = NA) +
-      scale_fill_viridis_c(option = "rocket", na.value = "grey") +
-      theme_minimal() +
-      labs(title = nutrients[4], 
-           fill = "Mean loading per lake per day")
+    # polys_summary |> 
+    #   filter(variable  == nutrients[4]) |> 
+    #   ggplot() +
+    #   geom_sf(aes(fill = value_kg_day), colour = NA) +
+    #   scale_fill_viridis_c(option = "rocket", na.value = "grey") +
+    #   theme_minimal() +
+    #   labs(title = nutrients[4], 
+    #        fill = "Mean loading per lake per day")
   )
   
   
@@ -422,12 +427,12 @@ if(archive_scaling) {
 
 # Apply scalings to  SAGIS annual loadings 
 sagis_loads <- read.csv("data/FW_ Request for information - Ref_ EIR2026_11092GC/lake_loads.csv") |> 
-  filter(variable %in% c('Nitrate', 'Phosphate')) |> 
+  filter(variable %in% c('Nitrate', 'P')) |> 
   mutate(value_kg_year = value_kg_day * 365) # SAGIS data are in kg/day
 
 sagis_monthly <- sagis_loads |> 
   mutate(variable = ifelse(variable == 'Nitrate', 'Nitrate-N', 
-                           ifelse(variable == 'Phosphate', 'Phosphorus-P', NA))) |> 
+                           ifelse(variable == 'P', 'Phosphorus-P', NA))) |> 
   full_join(combined_scaling, by = join_by(variable),
             relationship = 'many-to-many') |> 
   mutate(value_kg_month = value_kg_year * prop_scale) 
