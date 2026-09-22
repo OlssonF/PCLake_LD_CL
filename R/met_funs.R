@@ -1,5 +1,5 @@
 #--------------------------------------#
-## Project: Lake District nutrient critical limit estimation
+## Project: Lake District pathways modelling
 ## Script purpose: generate a dataframe that includes the details needed for each specific lake bifurcation
 ## Date: 2025-10-20
 ## Author: Freya Olsson
@@ -114,10 +114,10 @@ get_era5_ts <- function(var_name, latitude, longitude, daily = T) {
     
     nt <- dim(time) # how long is the time series
     
-    var_df <- data.frame(datetime = as_datetime(time * 3600, tz = 'UTC')) |> 
+    var_df <- tibble(datetime = as_datetime(time * 3600, tz = 'UTC')) |> 
       # it's in hours since 1970, convert to secs |>  
       ## make sure this is right! our_nc_data$dim$valid_time$units
-      mutate("{var_name}" := ncvar_get(our_nc_data, varid = var_name))
+      mutate("{var_name}" := as.vector(ncvar_get(our_nc_data, varid = var_name)))
     
     # checks if this grid has data
     missing <- var_df |> 
