@@ -1,5 +1,5 @@
 #--------------------------------------#
-## Project: Lake District nutrient critical limit estimation
+## Project: Lake District pathways modelling
 ## Script purpose: Baseline PCLake+ runs 
 ## Date: 2025-12-03
 ## Author: Freya Olsson
@@ -25,7 +25,7 @@ source('R/met_funs.R')
 
 ## Global settings
 options(scipen = 999) ## no scientific notation
-subset <- T
+subset <- F
 
 ## 1. Directory settings ---------------------------------------------------------
 ## using relative paths in which the project and script is saved in the work_cases
@@ -67,23 +67,28 @@ lDATM_SETTINGS <- PCModelReadDATMFile_PCLakePlus(fileXLS  = fileDATM,folderTXT =
 # - wind ts
 
 # the lakes portal data has all the basic info we need
-lakes_portal_df <- read_csv('data/lakes4PCLake.csv', show_col_types = F)
+lakes_portal_df <- read_csv('data/lakes4PCLake.csv', show_col_types = F) |> 
+  mutate(RET_TIMEyrs = ifelse(WBID == 29222, # this is Elterwater, something weird with the WRT
+                              15, RET_TIMEyrs))
+
+
+obs_sites <- read_csv('data/Validation/output/LD_combined_database_core_variables.csv') |> 
+  filter(date > ymd('1990-01-01')) |> 
+  mutate(site_id = ifelse(site_id %in% WIND, WIND_WBID, site_id)) |> 
+  distinct(site_id, site_name) |> 
+  mutate(site_id = ifelse(site_id %in% WIND, WIND_WBID, site_id),
+         site_name = ifelse(site_id == WIND_WBID, "Windermere", site_name)) |> 
+  distinct(site_id, site_name)
 
 
 if (subset == T) {
-  # LakeIDs to loop through
-  lakeIDs <- readxl::read_xlsx('data/SITE ID_MULTIPLE DATA SOURCES_LD LAKES.xlsx') |> 
-    filter(!is.na(LAKE_LakesTour2021_Zooplankton.csv),
-           !str_detect(LAKE_LakesTour2021_Zooplankton.csv, 'Loughrigg'))   # remove Loughrigg because it's not right
   
-  lake_names_lookup <- lakeIDs$`WBID_Lake District_UKCEH Portal data_raw.xlsx`
-  names(lake_names_lookup) <- str_extract(lakeIDs$LAKE_LakesTour2021_Zooplankton.csv, "....")
+  lake_names_lookup <- obs_sites$site_id
+  names(lake_names_lookup) <- obs_sites$site_name
   
-  lake_names_lookup[which(names(lake_names_lookup) == 'Wind')] <- 29233 
-  # the NBAS and SBAS have seperate WBIDs but the one from the lakes portal has the combined one which is different
 } else {
   
-  lake_names_lookup <- lakes_portal_df$WBID
+  lake_names_lookup <-lakes_portal_df$WBID
   names(lake_names_lookup) <- lakes_portal_df$NAME
   
 }
@@ -128,8 +133,6 @@ run_pclake <- function(i, lDATM_SETTINGS_local = lDATM_SETTINGS, lakes_portal_lo
   
   lake_id <- lake_names_lookup[i]
   lake_name <- names(lake_names_lookup[i])
-  
-  message("Starting lake ", lake_id, " on worker ", Sys.getpid())
   
   # Obtain the lake portal data (fetch, depth etc.)
   lakes_portal_use <- lakes_portal_local |> 
@@ -344,4 +347,6 @@ run_pclake <- function(i, lDATM_SETTINGS_local = lDATM_SETTINGS, lakes_portal_lo
 library(furrr)
 plan(multisession, workers = 6)
 
-results <- future_map(seq_along(lake_names_lookup), run_pclake, .progress = T)
+results <- future_map(seq_along(lake_names_lookup), run_pclake,
+                      .options = furrr_options(stdout = T), 
+                      .progress = T)
