@@ -4,3 +4,6 @@
 .Ruserdata
 /output
 /input
+/model_code
+/source_cpp
+/source_cpp_adjusted
