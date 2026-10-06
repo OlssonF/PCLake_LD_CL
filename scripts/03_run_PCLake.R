@@ -68,9 +68,11 @@ lDATM_SETTINGS <- PCModelReadDATMFile_PCLakePlus(fileXLS  = fileDATM,folderTXT =
 
 # the lakes portal data has all the basic info we need
 lakes_portal_df <- read_csv('data/lakes4PCLake.csv', show_col_types = F) |> 
-  mutate(RET_TIMEyrs = ifelse(WBID == 29222, # this is Elterwater, something weird with the WRT
-                              15, RET_TIMEyrs))
+  mutate(RET_TIMEyrs = ifelse(WBID == 29222, # this is Elterwater, something weird with the WRT, set to 20 days, 20/365 = 0.055 yrs
+                              0.055, RET_TIMEyrs))
 
+WIND <- c(47007, 47008) # these are the WBIDs for the NBAS and SBAS
+WIND_WBID <- 29233
 
 obs_sites <- read_csv('data/Validation/output/LD_combined_database_core_variables.csv') |> 
   filter(date > ymd('1990-01-01')) |> 
@@ -227,7 +229,7 @@ run_pclake <- function(i, lDATM_SETTINGS_local = lDATM_SETTINGS, lakes_portal_lo
     filter(variable == 'nitrate')
   
   lDATM_SETTINGS_local$forcings$sSet2$mPLoadEpi$value <- PLoad$value[c(1:nrow(PLoad), nrow(PLoad))] 
-  lDATM_SETTINGS_local$forcings$sSet2$mNLoadEpi$value <- NLoad$value[c(1:nrow(NLoad), nrow(NLoad))] 
+  lDATM_SETTINGS_local$forcings$sSet2$mNLoadEpi$value <- NLoad$value[c(1:nrow(NLoad), nrow(NLoad))]
   
   lDATM_SETTINGS_local$forcings$sSet3$mPLoadEpi$value <- PLoad$value[c(1:nrow(PLoad), nrow(PLoad))] 
   lDATM_SETTINGS_local$forcings$sSet3$mNLoadEpi$value <- NLoad$value[c(1:nrow(NLoad), nrow(NLoad))] 
