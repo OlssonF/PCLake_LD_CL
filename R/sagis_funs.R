@@ -10,6 +10,7 @@
 #' @examples
 extract_SAGIS <- function(variable = 'Total_Phosphorus', 
                           inlake_summary = mean,
+                          site_id = NULL,
                           portion = 'MeanLdKGd') {
   
   library(sf)
@@ -18,20 +19,25 @@ extract_SAGIS <- function(variable = 'Total_Phosphorus',
   # ------------------------------------------------------------#
   # 1. Load data
   # ------------------------------------------------------------#
-  
-  # Replace with your file paths
   ld_lakesportal <- readr::read_csv('data/Lake District_UKCEH Portal RT_data.csv', 
-                                    show_col_types = F) |>
-    select(WBID)
+                                      show_col_types = F) |>
+      select(WBID) 
   
+  if (!is.null(site_id)) {
+    ld_lakesportal <- ld_lakesportal |> 
+      filter(WBID %in% site_id)
+    
+  } 
+  
+    
   polys <- st_read("data/uklakes/data/uklakes_v3_6_poly.gpkg", 
                    quiet = T) |> 
     filter(WBID %in% ld_lakesportal$WBID) |> # filter to just the lake district lakes
-    select(WBID, NAME)
+    select(WBID, NAME) 
   
   catchments <- st_read("data/uklakes/data/uklakes_v3_7_catchments.gpkg", quiet = T) |> 
     filter(WBID %in% ld_lakesportal$WBID) |> # filter to just the lake district lakes
-    select(WBID, NAME)
+    select(WBID, NAME) 
   
   SAGIS_files <- list.files("data/FW_ Request for information - Ref_ EIR2026_11092GC/", 
                             pattern = paste0("\\", variable, ".xlsx$"), full.names = TRUE)
