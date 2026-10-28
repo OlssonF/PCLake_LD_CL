@@ -9,7 +9,7 @@
 #'
 #' @examples
 extract_SAGIS <- function(variable = 'Total_Phosphorus', 
-                          inlake_summary = mean, 
+                          inlake_summary = mean,
                           portion = 'MeanLdKGd') {
   
   library(sf)
@@ -58,10 +58,9 @@ extract_SAGIS <- function(variable = 'Total_Phosphorus',
   summary_tbl <- joined %>%
     st_drop_geometry() %>%
     group_by(WBID, NAME) %>%
-    summarise(#inlake_n   = sum(!is.na(get(portion))),
-              inlake_summary = inlake_summary(get(portion)), .groups = 'drop') |> 
-    pivot_longer(inlake_summary, names_to = 'source', values_to = 'value_kg_day') |> 
-    mutate(distance_m = 0)
+    summarise(across(all_of(portion), inlake_summary), .groups = 'drop') |> 
+    pivot_longer(portion, names_to = 'source', values_to = 'value_kg_day') |>
+    mutate(method = 'inlake_summary', distance_m = 0)
   
   # ------------------------------------------------------------#
   # 4. Identify polygons with NO intersecting points
@@ -97,38 +96,40 @@ extract_SAGIS <- function(variable = 'Total_Phosphorus',
       idx <- st_nearest_feature(lake_poly, pts_subset)
       nearest_pt <- pts_subset[idx, ]
       dist <- st_distance(st_geometry(lake_poly), st_geometry(nearest_pt))
-      tibble(
-        WBID = wbid,
-        NAME = lake_poly$NAME,
-       # nearest_id = nearest_pt$OBJECTID,
-        value_kg_day = nearest_pt[[portion]],
-        distance_m = as.numeric(dist),
-        source = "nearest_catchment"
-      )
+      
+      nearest_pt[portion] |> as_tibble() |>
+        pivot_longer(portion, names_to = 'source', values_to = 'value_kg_day') |> 
+        select(-geometry) |> 
+        mutate(WBID = wbid,
+               NAME = lake_poly$NAME,
+               distance_m = as.numeric(dist),
+               method = "nearest_catchment")
+
     } else {
       # 6b. fallback: nearest point from ALL SAGIS points
       idx <- st_nearest_feature(lake_poly, pts)
       nearest_pt <- pts[idx, ]
       dist <- st_distance(st_geometry(lake_poly), st_geometry(nearest_pt))
-      tibble(
-        WBID = wbid,
-        NAME = lake_poly$NAME,
-        #nearest_id = nearest_pt$OBJECTID,
-        value_kg_day = nearest_pt[[portion]],
-        distance_m = as.numeric(dist),
-        source = "nearest_all"
-      )
-    }
-  })
+      
+      nearest_pt[portion] |> as_tibble() |>
+        pivot_longer(portion, names_to = 'source', values_to = 'value_kg_day') |> 
+        select(-geometry) |> 
+        mutate(WBID = wbid,
+               NAME = lake_poly$NAME,
+               distance_m = as.numeric(dist),
+               method = "nearest_all")
   
-  # ------------------------------------------------------------#
-  # 7. Combine outputs
-  # ------------------------------------------------------------#
-  
-  out <- bind_rows(summary_tbl, nearest_results) %>%
-    mutate(variable = variable)
-  
-  return(out)
+  }
+    })
+
+# ------------------------------------------------------------#
+# 7. Combine outputs
+# ------------------------------------------------------------#
+
+out <- bind_rows(summary_tbl, nearest_results) %>%
+  mutate(variable = variable)
+
+return(out)
 }
 
 
