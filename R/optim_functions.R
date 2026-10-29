@@ -17,17 +17,82 @@ run_pathway <- function(val_pars, name_pars, current_val, initial_conditions = N
   # current_val <- possible_measures$current_val
   # initial_conditions <- equilibrium_states
   #--------------------------------#
-  
-  # Setting parameter values -----------#
   lDATM_SETTINGS_obj <- lDATM_SETTINGS
-  lag_pars_lag <- grep('_lag', name_pars) # these are model parameters with lags - take these out
-  lag_pars <- which(name_pars %in% gsub('_lag', '', name_pars[lag_pars_lag]))
+  
+  # -------- SAGIS parameters -----------
+  # Are there any SAGIS parameters
+  sagis_pars <- name_pars[str_detect(name_pars, "SAGIS")]
+  
+  if (length(sagis_pars) > 0) {
+   
+    # identify the index
+    sagis_pars <- grep("SAGIS", name_pars)[-grep("lag", name_pars[grep("SAGIS", name_pars)])]
+    sagis_pars_lag <- grep("SAGIS.*lag", name_pars)    
+    
+    # do this because there could be multiple lags for a single parameter
+    unique_sagis_lags <- unique(gsub("^\\d+|\\d+$", "", name_pars[sagis_pars_lag])) # could have multiple lag values e.g. mPLoadEpi_lag2, so identify the unqiue unnumbered measures
+    unique_sagis <- unique(gsub("^\\d+|\\d+$", "", name_pars[sagis_pars])) 
+    
+    forcing_df <- NULL
+    
+    for (j in 1:length(unique_sagis)) {
+      
+      # extract the names
+      name1 <- name_pars[str_detect(name_pars, unique_sagis_lags[j])]
+      name2 <- name_pars[str_detect(name_pars, paste0(unique_sagis[j], '[^_]', '|',
+                                                      unique_sagis[j], '$'))]
+      
+      # what are the possible values (current values plus those specified in the pathway parameters)
+      values_use <- c(unique(current_val[which(name_pars %in% name2)]), 
+                      val_pars[which(name_pars == name2)])
+      
+      # what are the time points that things change? (the start t = 0, plus any lag values to implement measures)
+      lags_use <- c(0, val_pars[which(name_pars %in% name1)])[order(c(0, val_pars[which(name_pars %in% name1)]))]
+      
+      df <- data.frame(l = floor(lags_use*365), # round to an integer
+                       value = values_use[order(c(0, val_pars[which(name_pars %in% name1)]))]) # make sure the lag is matched with its associated parameter
+      
+      # create a dataframe by filling down
+      forcing_df_temp <- data.frame(time = 0:(lDATM_SETTINGS_obj$run_settings["dReady", "Set2"]*365)) |> 
+        full_join(df, by = join_by(time == l)) |> 
+        fill(value, .direction = 'down') |> 
+        mutate(sagis_soure = name2)
+      
+      forcing_df <- bind_rows(forcing_df, forcing_df_temp)
+      
+    }
+    
+    P_df <- forcing_df |> 
+      pivot_wider(names_from = sagis_soure, values_from = value) |> 
+      mutate(total = 1 - (rowSums(across(all_of(unique_sagis))))) |> 
+      # sum the differences for each of the SAGIS parameters
+      # 1 minus to get the right multiplier
+      full_join(lDATM_SETTINGS_obj$forcings$sSet2$mPLoadEpi, by = 'time') |> 
+      mutate(value = value * total) |> 
+      # what is the change in P load
+      select(time, value) |> 
+      as.data.frame()
+    
+    rownames(P_df) <- P_df$time + 1
+
+    lDATM_SETTINGS_obj$forcings$sSet2$mPLoadEpi <- P_df
+    
+    # also need to take out the N load forcings?
+    lDATM_SETTINGS_obj$params['ReadNLoad', c('sSet2')] <- 0
+    lDATM_SETTINGS_obj$forcings$sSet2$mNLoadEpi$value <- -9999
+  }
+  
+  
+  # -------- PCLake parameters -----------
+  # Setting parameter values -----------#
+  lag_pars_lag <- which(grepl("lag", name_pars) & !grepl("SAGIS", name_pars)) # these are model parameters with lags - take these out
+  lag_pars <- which(!grepl("lag", name_pars) & !grepl("SAGIS", name_pars))
   
   # it wasn't working if there were no lagged pars
   if (length(lag_pars) == 0) {
     none_lag_pars <- name_pars
   } else {
-    none_lag_pars <- name_pars[-c(lag_pars, lag_pars_lag)]
+    none_lag_pars <- name_pars[-c(lag_pars, lag_pars_lag, sagis_pars, sagis_pars_lag)]
   }
   
   # check if these non-lagged parameter values are listed in the forcings and change there if it is, if not just change the parameter value
