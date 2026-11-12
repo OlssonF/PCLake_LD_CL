@@ -7,8 +7,8 @@
 # Created with R version 4.5.2 (2025-10-31 ucrt)
 #--------------------------------------#
 # Contents -----------------------------
-# report_pathway()
-# log_to_long()
+# set_lake_specifics
+
 # summarise_achievement()#' Function that updates the lDATM file using lake specific variables for LD modelling
 #'
 #' @param WBID_use site, water basin ID

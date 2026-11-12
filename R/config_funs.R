@@ -1,7 +1,7 @@
 #--------------------------------------#
 ## Project: Pathway optimisation - Lake District
 ## Script purpose: functions to build and configure measures, desired ESs and
-#  other things that go into the pathway optimisation
+#  other things that go into the pathway optimisation. Parses the optimisation.yaml
 ## Date: 2026-11-12
 ## Author: Freya Olsson
 # Created with R version 4.5.2 (2025-10-31 ucrt)
@@ -38,10 +38,18 @@
 # ---------------------------------------------------------------------------
 # config_funs.R
 # Turn input/optimisation_config.yml into the objects the optimisation uses.
-# Needs: yaml, dplyr, tibble, DEoptim (and range_obj etc. from optim_functions.R
+# Needs: yaml, dplyr, tibble, DEoptim (and range_obj etc. from objective_funs
 #        sourced before build_es_config() is called)
 # ---------------------------------------------------------------------------
 
+#' Title
+#'
+#' @param path path to the configuration yaml
+#'
+#' @returns list
+#' @export
+#'
+#' @examples
 load_config <- function(path) {
   if (!file.exists(path)) {
     stop("Config file not found: ", path)
@@ -64,6 +72,8 @@ load_config <- function(path) {
 .chr   <- function(x) if (is.null(x)) NA_character_ else as.character(x)
 .lag_name <- function(measure, lag) if (is.null(lag$name)) paste0(measure, "_lag") else lag$name
 .rate_name <- function(measure, rate) if (is.null(rate$name)) paste0(measure, "_rate") else rate$name
+# Value of a lag / rate block that is switched off but given a fixed `value` (NA if none)
+.fixed_val <- function(blk) if (!is.null(blk) && !.is_on(blk) && !is.null(blk$value)) as.numeric(blk$value) else  NA_real_
 
 parse_days <- function(x) {
   if (is.list(x) && all(c("start", "end") %in% names(x))) return(seq(x$start, x$end))
@@ -74,7 +84,15 @@ parse_days <- function(x) {
 # ============================== MEASURES ======================================
 
 # Parameters fixed by enabled measures (e.g. fManVeg needs cDayManVeg1). A parameter
-# that is itself an enabled (optimised) measure takes precedence and is skipped.
+# that is itself an enabled (optimised) measure takes precedence and is skipped. Used inside apply_fixed_params()
+#' Title
+#'
+#' @param cfg optimisation configuration
+#'
+#' @returns
+#' @export
+#'
+#' @examples
 get_fixed_params <- function(cfg) {
   on <- purrr::keep(cfg$measures, .is_on)
   out <- list()
@@ -91,6 +109,16 @@ get_fixed_params <- function(cfg) {
   out
 }
 
+#' Title
+#'
+#' @param cfg optimisation configuration
+#' @param lDATM the read in DATM file, as a list
+#' @param set which DATM set to manipulate, Default sSet2
+#'
+#' @returns modified DATM list
+#' @export
+#'
+#' @examples
 apply_fixed_params <- function(cfg, lDATM, set = "sSet2") {
   fp <- get_fixed_params(cfg)
   for (p in names(fp)) {
@@ -103,14 +131,18 @@ apply_fixed_params <- function(cfg, lDATM, set = "sSet2") {
   lDATM
 }
 
-# Value of a lag / rate block that is switched off but given a fixed `value` (NA if none)
-.fixed_val <- function(blk) if (!is.null(blk) && !.is_on(blk) && !is.null(blk$value)) as.numeric(blk$value) else  NA_real_
-
-
 # main parameter -> its lag and rate parameter (NA if not optimised), any fixed lag / rate
 # value from the config, plus its current value. Includes enabled measures that have an
 # optimised or fixed lag and/or rate.
 
+#' Title
+#'
+#' @param cfg 
+#'
+#' @returns
+#' @export
+#'
+#' @examples
 measure_lag_pairs <- function(cfg) {
   on <- purrr::keep(cfg$measures, .is_on)
   purrr::imap(on, ~ {
@@ -134,12 +166,22 @@ measure_lag_pairs <- function(cfg) {
 }
 
 
+
+
+#' Title
+#'
+#' @param cfg optimisation config 
+#'
+#' @returns possible_measures dataframe
+#' @export
+#'
+#' @examples
+
 # Same data frame as the old possible_measures.csv + filter():
 # parameter, upper_bound, lower_bound, current_val, note
 # plus two columns describing each row for run_pathway():
 #   role     'measure', 'lag' (when it starts, years) or 'rate' (years to reach the full value)
 #   measure  the measure a lag / rate belongs to
-
 build_possible_measures <- function(cfg) {
   on <- purrr::keep(cfg$measures, .is_on)
   
@@ -306,6 +348,14 @@ build_possible_measures <- function(cfg) {
 # ============================== TARGETS =======================================
 
 # States used by enabled ESs/indicators (no function lookup needed - safe in plotting sessions)
+#' Title
+#'
+#' @param cfg optimisation config
+#'
+#' @returns the unique states/indicators listed under the ES
+#' @export
+#'
+#' @examples
 config_states <- function(cfg) {
   cfg$targets$ecosystem_services |>
     purrr::keep(.is_on) |>
@@ -319,6 +369,15 @@ config_states <- function(cfg) {
   
 }
 
+#' Title
+#'
+#' @param name 
+#'
+#' @returns function
+#' @export
+#'
+#' @examples
+#' Convert a text string from YAML into an actual R function.
 resolve_summary <- function(name) {
   
   if (is.null(name)) {
@@ -334,6 +393,15 @@ resolve_summary <- function(name) {
          stop("Unknown summary '", name, "'. Use max, min, mean, median or pNN (e.g. p90)."))
 }
 
+#' Title
+#'
+#' @param name 
+#'
+#' @returns list list(f = below_obj, n = 1L)
+#' @export
+#'
+#' @examples
+#' Convert an objective name in the config into: a) the objective function (range, below, etc.); b)the number of target values required
 resolve_objective <- function(name) {
   # looked up when called, so optim_functions.R must already be sourced
   objs <- list(range = list(f = range_obj, n = 2L), below = list(f = below_obj, n = 1L),
@@ -347,6 +415,15 @@ resolve_objective <- function(name) {
 }
 
 # Config list in the structure evaluate_es() expects (functions resolved from names)
+#' Title
+#'
+#' @param cfg optimisation config
+#'
+#' @returns
+#' @export
+#'
+#' @examples
+#' Main constructor of the desired ESs. Converts a YAMLconfig into the structure expected by evaluate_pathway_es().
 build_es_config <- function(cfg) {
   es_cfg <- purrr::keep(cfg$targets$ecosystem_services, .is_on)
   
@@ -399,6 +476,14 @@ build_es_config <- function(cfg) {
 }
 
 # Arguments for evaluate_es(): eval_days, eval_year, nonneg, bound
+#' Title
+#'
+#' @param cfg optimisation config
+#'
+#' @returns list, generic evaluation settings
+#' @export
+#'
+#' @examples
 build_eval_settings <- function(cfg) {
   e <- cfg$targets$evaluation
   list(eval_days = parse_days(e$eval_days),

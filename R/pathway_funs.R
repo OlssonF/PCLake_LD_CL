@@ -105,13 +105,19 @@ apply_ramp_to_pathways <- function(df, pairs) {
 #' @param val_pars values of the pathway parameters
 #' @param name_pars names of the pathway parameters
 #' @param initial_conditions dataframe of initial values (from prepInitials() or use default)
+#' @param current_val 
+#' @param measure_map the possible_measures df, from build_possible_measures()
 #'
 #' @returns a dataframe of PCLake output as defined in the DATM file
 #' @export
 #'
 #' @examples
 
-run_pathway <- function(val_pars, name_pars, current_val, initial_conditions = NULL, measure_map = NULL) {
+run_pathway <- function(val_pars,
+                        name_pars, 
+                        current_val, 
+                        initial_conditions = NULL, 
+                        measure_map = NULL) {
   
   # For debugging ----------------- #
   # val_pars <- possible_measures$lower_bound

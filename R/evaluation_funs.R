@@ -7,9 +7,9 @@
 #--------------------------------------#
 # Contents------------------------------
 # es_states()
-# prepare_es_config()
+# validate_es_config()
 # weight_audit()
-# prepare_eval_settings()
+# validate_eval_settings()
 # evaluate_pathway_es()
 # flatten_es_result()
 # evaluate_pathway()   # legacy version, copied from optim_functions 12/11/2026
@@ -17,19 +17,37 @@
 
 # ---------------------------------------------------------------------------
 # Ecosystem-service (ES) level evaluation
-# Replaces evaluate_pathway(). The ES / indicator definitions (states, targets,
+# Replaces state-level evaluate_pathway(). The ES / indicator definitions (states, targets,
 # summaries, weights, aggregation) are NOT set here: they come from
 # input/optimisation_config.yml via build_es_config() in R/config_funs.R.
 # An indicator = (ES, state) pair, so one state can serve several ESs.
 # Weights are optional and re-normalised (equal by default) so the number of
 # indicators in an ES never changes how much that ES counts.
 # ---------------------------------------------------------------------------
+#' Title
+#'
+#' @param es_config the config for ES, from build_es_config
+#'
+#' @returns
+#' @export
+#'
+#' @examples
 es_states <- function(es_config) {
   unique(unlist(lapply(es_config, function(e) names(e$indicators))))
 }
 
 # Fill defaults, validate, and normalise weights #
-prepare_es_config <- function(es_config) {
+#' Title
+#'
+#' @param es_config the config for ES, from build_es_config
+#'
+#' @returns
+#' @export
+#'
+#' @examples
+#' validates names, validates required fields (target, summary, obj), normalises
+#' ES and indicator weights, adds in missing defaults
+validate_es_config <- function(es_config) {
   
   # Define helper function
   chk_names <- function(x) {
@@ -75,8 +93,16 @@ prepare_es_config <- function(es_config) {
 }
 
 # Audit the weighting: how much does each indicator / state really count? 
+#' Title
+#'
+#' @param es_config the config for ES, from build_es_config
+#'
+#' @returns data.frame of weights
+#' @export
+#'
+#' @examples
 weight_audit <- function(es_config) {
-  d <- prepare_es_config(es_config) |>
+  d <- validate_es_config(es_config) |>
     purrr::imap_dfr(~ tibble::tibble(es = .y,
                                      state = names(.x$indicators), 
                                      es_weight = .x$weight,       
@@ -90,7 +116,15 @@ weight_audit <- function(es_config) {
 
 # Validate the evaluation settings and fill in defaults. Unknown keys are an error,
 # so a typo in targets.evaluation in the config is caught rather than silently ignored.
-prepare_eval_settings <- function(eval_settings = list()) {
+#' Title
+#'
+#' @param eval_settings list from build_eval_settings(config)
+#'
+#' @returns modified eval_settings list
+#' @export
+#'
+#' @examples
+validate_eval_settings <- function(eval_settings = list()) {
   defaults <- list(eval_days = 120:275, eval_year = "max", nonneg = TRUE, bound = FALSE)
   unknown <- setdiff(names(eval_settings), names(defaults))
   if (length(unknown) > 0) {
@@ -123,14 +157,14 @@ evaluate_pathway_es <- function(PCLake_output,
                                 eval_settings = list(),
                                 return_detail = FALSE) {
   
-  eval_settings <- prepare_eval_settings(eval_settings)
+  eval_settings <- validate_eval_settings(eval_settings)
   
   eval_days <- eval_settings$eval_days
   eval_year <- eval_settings$eval_year
   nonneg <- eval_settings$nonneg
   bound <- eval_settings$bound
   
-  es_config <- prepare_es_config(es_config)
+  es_config <- validate_es_config(es_config)
   
   missing_states <- setdiff(es_states(es_config),
                             colnames(PCLake_output))
@@ -279,7 +313,7 @@ flatten_es_result <- function(res) {
   do.call(data.frame, c(out, list(check.names = FALSE, stringsAsFactors = FALSE)))
 }
 
-#' Evaluate a parameter pathway - states only
+#' Evaluate a parameter pathway - states only (deprecated!!)
 #'
 #' @param PCLake_output output from run_pathway
 #' @param future_states dataframe of variable and target value, with weights

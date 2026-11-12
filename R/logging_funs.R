@@ -12,11 +12,11 @@
 
 #' report_pathway outputs
 #'
-#' @param val_pars 
-#' @param name_pars 
-#' @param obj_val 
-#' @param log_dir 
-#' @param extra optional extra columns in the log (1-row data.frame)
+#' @param val_pars values used in the pathways
+#' @param name_pars names that match these values
+#' @param obj_val the result from evaluate_pathway
+#' @param log_dir the temp_dir
+#' @param extra optional extra columns in the log (1-row data.frame); all the other useful info from evaluate_pathway
 #'
 #' @returns
 #' @export
@@ -53,6 +53,15 @@ report_pathway  <- function(val_pars,
 #   ind_long <- log_to_long(log_df, "ind")  # one row per member x ES x state
 #   es_long  <- log_to_long(log_df, "es")   # one row per member x ES
 # ---------------------------------------------------------------------------#
+#' Title
+#'
+#' @param log_df 
+#' @param level 
+#'
+#' @returns
+#' @export
+#'
+#' @examples
 log_to_long <- function(log_df, level = c("ind", "es")) {
   level <- match.arg(level)
   cols  <- grep(paste0("^", level, "__"), names(log_df), value = TRUE)
