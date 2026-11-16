@@ -225,7 +225,7 @@ evaluate_pathway_es <- function(PCLake_output,
                      target_hi = if (length(tg) == 2) tg[2] else NA_real_,
                      gap = gap,
                      met = met,
-                     status = ifelse(met, "met", ifelse(gap > 0, "too_low", "too_high")),
+                     status = ifelse(met, "met", ifelse(gap < 0, "too_low", "too_high")),
                      # how often does the state itself sit within target across the eval window?
                      prop_days_met = mean(purrr::map_lgl(x,~ ind$obj(.x, tg) <= ind$met_tol)),
                      error = err,
@@ -248,7 +248,7 @@ evaluate_pathway_es <- function(PCLake_output,
                        es_weight = cfg$weight,
                        eff_weight = cfg$weight * ind_weight,
                        contribution = if (cfg$aggregate == "max") {
-                         cfg$weight * ifelse(state == lim, error, 0)
+                         cfg$weight * ifelse(state %in% lim, error, 0)
                        } else { eff_weight * error})
     
     list(detail = d,
@@ -301,11 +301,11 @@ flatten_es_result <- function(res) {
   out <- list()
   
   for (i in seq_len(nrow(d))) for (f in ind_fields) {
-    out[[paste("ind", d$es[i], d$state[i], f, sep = "_")]] <- d[[f]][i]
+    out[[paste("ind", d$es[i], d$state[i], f, sep = "__")]] <- d[[f]][i]
   }
   
   for (j in seq_len(nrow(e))) for (f in es_fields) {
-    out[[paste("es", e$es[j], f, sep = "_")]] <- e[[f]][j]
+    out[[paste("es", e$es[j], f, sep = "__")]] <- e[[f]][j]
   }
   
   out$n_es_met <- res$n_es_met
