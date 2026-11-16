@@ -14,6 +14,13 @@ library(parallelly)
 library(ggh4x)
 library(yaml)
 
+source('R/config_funs.R')
+source('R/evaluation_funs.R')
+source('R/lake_setup_funs.R')
+source('R/logging_funs.R')
+source('R/objective_funs.R')
+source('R/pathway_funs.R')
+
 ## 0. Settings --------------------------
 ##---------------------------------------#
 
@@ -49,8 +56,6 @@ dirSave <- dirShell
 source(file.path(dirShell, "scripts", "R_system", "functions.r"))
 source(file.path(dirShell, "scripts", "R_system", "functions_PCLake.r")) 
 
-source('R/temp funs.R')
-source('R/sagis_funs.R')
 
 ## Order of actions to run PCLake in R
 ##   1. Making folder structure for running the model
@@ -168,9 +173,6 @@ lDATM_SETTINGS <- apply_fixed_params(config, lDATM_SETTINGS)
 # Ecosystem services -> indicators (PCLake states) -> targets, summaries, weights and aggregation
 # all come from the 'targets' section of the config
 
-source(file.path(project_location, "R/optim_functions.R")) 
-# functions for running and evaluating the pathways
-
 desired_es    <- build_es_config(config)
 eval_settings <- build_eval_settings(config)
 optim_states  <- es_states(desired_es)
@@ -183,6 +185,18 @@ if (length(unknown_states) > 0) {
 
 # how much does each indicator / state actually count in the objective?
 print(weight_audit(desired_es))
+
+# pre-flight: is ANY pathway viable? Test with every lag and rate at its lowest bound (plus fixed values)
+are_feasible <- check_timing_feasible(val_pars = possible_measures$lower_bound, 
+                                   name_pars = possible_measures$parameter,
+                                   measure_map = possible_measures,
+                                   max_years = lDATM_SETTINGS$run_settings['dReady', 'Set2'])
+if (!are_feasible$feasible) {
+  print(are_feasible$detail)
+  stop('Even with the shortest lag and rate allowed, these measures cannot be fully implemented within the ',
+       'simulation, so every pathway would be not viable (obj = Inf). Check the lag / rate bounds or fixed values in the config.')
+}
+
 
 ## Update the DATM file and recompile the model ---------------#
 # Report variables
@@ -234,7 +248,6 @@ PCModelCompileModelWorkCase(dirSHELL = dirShell,
 # 2) extract output
 # 3) return a minimised value by comparing with desired future (DEOptim will make the value as negative as possible)
 
-source(file.path(project_location, "R/optim_functions.R")) # functions for running and evaluating the pathways
 
 #' Define the objective function with the output to be optimised
 #'
@@ -255,10 +268,24 @@ obj_function <- function(val_pars, name_pars, es_config, eval_settings) {
   # es_config <- desired_es
   #--------------------------------#
   
+  # Not viable if a measure can't be fully implemented within the simulation (lag + rate > run length, years).
+  # Return Inf without running the model, so only pathways that reach the full size of every measure survive
+  timing <- check_timing_feasible(val_pars, name_pars, measure_map = possible_measures,
+                                  max_years = lDATM_SETTINGS$run_settings['dReady', 'Set2'])
+  
+  if (!timing$feasible) {
+    # still log it: one row per evaluation keeps the generations lined up when the log is read back
+    report_pathway(val_pars, name_pars, obj_val = Inf, log_dir = log_dir,
+                   extra = empty_es_result(es_config))
+    return(Inf)
+  }
+  
+  # run the pathway with the selected values
   model_output <- run_pathway(val_pars, name_pars, current_val = possible_measures$current_val,
                               measure_map = possible_measures,
                               initial_conditions = equilibrium_states)
   
+  # compare the model output with the desired es
   eval_output <- evaluate_pathway_es(model_output, es_config,
                                      eval_settings, # are common across ES
                                      return_detail = T)
@@ -293,7 +320,9 @@ cluster_export_names <- c("lDATM_SETTINGS", 'possible_measures', 'equilibrium_st
                           "above_obj", "below_obj", "exact_obj", "range_obj",
                           "dirShell", "nameWorkCase", 'dirHome', "log_dir",
                           "PCmodelSingleRun", "RunModel", 
-                          'run_pathway', 'evaluate_pathway_es', 'prepare_es_config', 'prepare_eval_settings', 'es_states',
+                          'run_pathway', 'build_ramp_path', 'ramp_fraction', 'forcing_key', 'infer_measure_map', 'get_fixed_timing',
+                          'check_timing_feasible', 'timing_value', 'es_log_fields', 'empty_es_result',
+                          'evaluate_pathway_es', 'validate_es_config', 'validate_eval_settings', 'es_states',
                           'flatten_es_result', 'report_pathway')
 
 ## Parallelisation with FOREACH package

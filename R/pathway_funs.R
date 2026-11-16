@@ -76,6 +76,61 @@ get_fixed_timing <- function(measure_map) {
   ft
 }
 
+# Years for a measure's lag (r = "lag") or rate (r = "rate"): the optimised value if it is being
+# optimised, else the value fixed in the config, else 0 (it has none)
+timing_value <- function(m, r, val_pars, role, measure, fixed_timing) {
+  i <- which(role == r & measure == m)
+  if (length(i) > 0) { 
+    return(val_pars[i[1]])                      # optimised
+  } else {
+    fx <- fixed_timing$value[fixed_timing$measure == m & fixed_timing$role == r]
+    if (length(fx) > 0) { fx[1] # fixed in the config, or none
+      } else { 0 }                               
+  }
+  
+}
+
+#' Can every measure be fully implemented within the simulation?
+#'
+#' @param val_pars, name_pars the pathway parameters (as for run_pathway())
+#' @param measure_map possible_measures (carries any lags / rates fixed in the config)
+#' @param max_years length of the simulation in years (lDATM_SETTINGS$run_settings['dReady', 'Set2'])
+#' @details A measure starts at its lag and takes its rate to reach its full value, so it is only
+#'   viable if lag + rate <= max_years. Optimised and fixed lags / rates both count; a measure
+#'   with no lag starts at 0 and one with no rate is an instant step.
+#' @returns list(feasible = TRUE/FALSE, detail = one row per measure with lag, rate, total_years, feasible)
+check_timing_feasible <- function(val_pars, name_pars, measure_map = NULL, max_years) {
+  val_pars <- as.numeric(val_pars)
+  
+  if (is.null(measure_map)){
+    measure_map <- infer_measure_map(name_pars)
+  }
+  
+  idx <- match(name_pars, measure_map$parameter)
+  
+  if (anyNA(idx)) {
+    stop("measure_map has no entry for: ", paste(name_pars[is.na(idx)], collapse = ", "))
+  }
+  
+  role <- measure_map$role[idx]
+  measure <- measure_map$measure[idx]
+  fixed_timing <- get_fixed_timing(measure_map)
+  
+  measures <- unique(c(measure[role %in% c("lag", "rate")], fixed_timing$measure))
+  
+  detail <- data.frame(measure = measures, stringsAsFactors = FALSE)
+  detail$lag  <- unname(vapply(measures, timing_value, numeric(1), r = "lag",
+                               val_pars = val_pars, role = role, measure = measure, fixed_timing = fixed_timing))
+  detail$rate <- unname(vapply(measures, timing_value, numeric(1), r = "rate",
+                               val_pars = val_pars, role = role, measure = measure, fixed_timing = fixed_timing))
+  detail$total_years <- detail$lag + detail$rate 
+  # checks that there is a feasible pathway based on this combination
+  detail$feasible    <- detail$total_years <= max_years 
+  
+  list(feasible = all(detail$feasible), detail = detail)
+}
+
+
 # Parameter roles inferred from names, used only if run_pathway() is not given a measure_map:
 # <measure>_lag / <measure>_lag2 and <measure>_rate / <measure>_rate2
 infer_measure_map <- function(name_pars) {
@@ -105,19 +160,13 @@ apply_ramp_to_pathways <- function(df, pairs) {
 #' @param val_pars values of the pathway parameters
 #' @param name_pars names of the pathway parameters
 #' @param initial_conditions dataframe of initial values (from prepInitials() or use default)
-#' @param current_val 
-#' @param measure_map the possible_measures df, from build_possible_measures()
 #'
 #' @returns a dataframe of PCLake output as defined in the DATM file
 #' @export
 #'
 #' @examples
 
-run_pathway <- function(val_pars,
-                        name_pars, 
-                        current_val, 
-                        initial_conditions = NULL, 
-                        measure_map = NULL) {
+run_pathway <- function(val_pars, name_pars, current_val, initial_conditions = NULL, measure_map = NULL) {
   
   # For debugging ----------------- #
   # val_pars <- possible_measures$lower_bound
@@ -145,7 +194,7 @@ run_pathway <- function(val_pars,
   
   days <- 0:(lDATM_SETTINGS_obj$run_settings["dReady", "Set2"]*365)
   
-  # time series for one group of measures (e.g. mPLoadEpiMult + mPLoadEpiMult2 share a forcing)
+  # time series for one group of measures (e.g. where parameters share a forcing)
   path_for_group <- function(g) {
     mains <- name_pars[role == "measure" & forcing_key(name_pars) == g]
     

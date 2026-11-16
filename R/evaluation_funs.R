@@ -285,6 +285,12 @@ evaluate_pathway_es <- function(PCLake_output,
        all_met = all(es_tab$es_met))
 }
 
+# The fields logged for every indicator and every ES (shared so the log columns always match)
+es_log_fields <- function() {
+  list(ind = c("summary_value", "gap", "status", "met", "prop_days_met",
+               "error", "eff_weight", "share_of_total"),
+       es  = c("es_score", "es_met", "prop_indicators_met", "limiting_indicator", "share_of_total"))
+}
 
 # ---------------------------------------------------------------------------
 # One-row wide table of everything above, for the per-member log
@@ -294,9 +300,8 @@ flatten_es_result <- function(res) {
   d <- res$detail
   e <- res$es
   
-  ind_fields <- c("summary_value", "gap", "status", "met", "prop_days_met",
-                  "error", "eff_weight", "share_of_total")
-  es_fields  <- c("es_score", "es_met", "prop_indicators_met", "limiting_indicator", "share_of_total")
+  ind_fields <- es_log_fields()$ind
+  es_fields  <- es_log_fields()$es
   
   out <- list()
   
@@ -313,6 +318,23 @@ flatten_es_result <- function(res) {
   do.call(data.frame, c(out, list(check.names = FALSE, stringsAsFactors = FALSE)))
 }
 
+# The log row for a pathway that was not run (e.g. not viable): same columns as flatten_es_result(), all NA.
+# One log row per evaluation keeps the generations lined up when the log is read back (NP rows each).
+empty_es_result <- function(es_config) {
+  es_config <- validate_es_config(es_config)
+  fields <- es_log_fields()
+  
+  detail <- purrr::imap_dfr(es_config,
+                            ~ tibble::tibble(es = .y,
+                                             state = names(.x$indicators)))
+  detail[fields$ind] <- NA
+  
+  es_tab <- tibble::tibble(es = names(es_config))
+  
+  es_tab[fields$es] <- NA
+  
+  flatten_es_result(list(detail = detail, es = es_tab, n_es_met = NA, all_met = NA))
+}
 #' Evaluate a parameter pathway - states only (deprecated!!)
 #'
 #' @param PCLake_output output from run_pathway
